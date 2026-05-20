@@ -39,6 +39,7 @@ namespace dev_library.Data
         public DroptimizerSettings Droptimizer { get; set; }
         public GoogleSheetsSettings GoogleSheet { get; set; }
         public ApplicationSheetSettings ApplicationSheet { get; set; }
+        public ulong[] DenyUserIds { get; set; } = Array.Empty<ulong>();
     }
 
     public class GuildFeatures
