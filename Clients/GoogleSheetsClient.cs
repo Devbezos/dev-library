@@ -126,7 +126,6 @@ namespace dev_library.Clients
 
         public async Task<List<GuildApplication>> ReadApplications(ApplicationSheetSettings settings)
         {
-            Log.Information("GoogleSheetsClient.ReadApplications: START");
             var range = $"'{settings.SheetName}'!A:L";
             var request = SheetsService.Spreadsheets.Values.Get(settings.Id, range);
             var response = await request.ExecuteAsync();
@@ -135,10 +134,7 @@ namespace dev_library.Clients
             var values = response.Values;
 
             if (values == null || values.Count <= 1)
-            {
-                Log.Information("GoogleSheetsClient.ReadApplications: END (no data)");
                 return applications;
-            }
 
             // Row 1 (index 0) is the header; data starts at index 1 = sheet row 2
             for (var i = 1; i < values.Count; i++)
@@ -168,7 +164,9 @@ namespace dev_library.Clients
                 });
             }
 
-            Log.Information("GoogleSheetsClient.ReadApplications: END");
+            var newCount = applications.Count(a => !a.IsPosted);
+            if (newCount > 0)
+                Log.Information("GoogleSheetsClient.ReadApplications: found {Count} new application(s)", newCount);
             return applications;
         }
 
