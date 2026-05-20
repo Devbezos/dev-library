@@ -20,7 +20,6 @@ namespace dev_refined
 
         public async Task<bool> PostServerAvailability()
         {
-            Log.Information("RealmClient.PostServerAvailability: START");
             var fileLocation = $"{AppSettings.BasePath}/realmcache.json";
 
             var realmData = await _battleNetClient.GetZuljinData();
@@ -30,7 +29,8 @@ namespace dev_refined
 
             if (realmData.Status.Name.ToUpper() != cachedData.Status.Name.ToUpper())
             {
-                Console.WriteLine($"Server status has changed from {cachedData.Status.Name} to {realmData.Status.Name}");
+                Log.ForContext("SourceContext", "RealmClient.PostServerAvailability")
+                   .Information("Server status changed: {Old} -> {New}", cachedData.Status.Name, realmData.Status.Name);
 
                 if (realmData.Status.Name.ToUpper() == "UP")
                 {
@@ -46,7 +46,6 @@ namespace dev_refined
                 }
             }
 
-            Log.Information("RealmClient.PostServerAvailability: END");
             return false;
         }
 
