@@ -1,4 +1,5 @@
 ﻿using dev_library.Data;
+using dev_library.Data.Discord;
 using dev_library.Data.WoW.Raidbots;
 using Google.Apis.Auth.OAuth2;
 using Serilog;
@@ -121,6 +122,64 @@ namespace dev_library.Clients
 
             Log.Information("GoogleSheetsClient.UpdateSheet: END");
             return true;
+        }
+
+        public async Task<List<GuildApplication>> ReadApplications(ApplicationSheetSettings settings)
+        {
+            Log.Information("GoogleSheetsClient.ReadApplications: START");
+            var range = $"'{settings.SheetName}'!A:L";
+            var request = SheetsService.Spreadsheets.Values.Get(settings.Id, range);
+            var response = await request.ExecuteAsync();
+
+            var applications = new List<GuildApplication>();
+            var values = response.Values;
+
+            if (values == null || values.Count <= 1)
+            {
+                Log.Information("GoogleSheetsClient.ReadApplications: END (no data)");
+                return applications;
+            }
+
+            // Row 1 (index 0) is the header; data starts at index 1 = sheet row 2
+            for (var i = 1; i < values.Count; i++)
+            {
+                var row = values[i];
+                if (row.Count < 1 || string.IsNullOrWhiteSpace(row[0]?.ToString())) continue;
+
+                string Cell(int col) => row.Count > col ? row[col]?.ToString() ?? string.Empty : string.Empty;
+
+                if (!DateTime.TryParse(Cell(0), out var timestamp)) continue;
+
+                applications.Add(new GuildApplication
+                {
+                    RowIndex = i + 1, // i is 0-based list index; sheet row = i + 1 (header is row 1)
+                    IsPosted = Cell(11).Equals("TRUE", StringComparison.OrdinalIgnoreCase),
+                    Timestamp = timestamp,
+                    ContactInfo = Cell(1),
+                    ClassSpec = Cell(2),
+                    Multiclassing = Cell(3),
+                    CanMakeRaidTimes = Cell(4),
+                    WarcraftLogs = Cell(5),
+                    PrivateLogCredentials = Cell(6),
+                    MythicExperience = Cell(7),
+                    ReasonForLeaving = Cell(8),
+                    WhyReforged = Cell(9),
+                    AnythingElse = Cell(10)
+                });
+            }
+
+            Log.Information("GoogleSheetsClient.ReadApplications: END");
+            return applications;
+        }
+
+        public async Task MarkApplicationAsPosted(ApplicationSheetSettings settings, int sheetRowNumber)
+        {
+            Log.Information($"GoogleSheetsClient.MarkApplicationAsPosted: row {sheetRowNumber}");
+            var range = $"'{settings.SheetName}'!L{sheetRowNumber}";
+            var requestBody = new ValueRange { Values = new List<IList<object>> { new List<object> { "TRUE" } } };
+            var request = SheetsService.Spreadsheets.Values.Update(requestBody, settings.Id, range);
+            request.ValueInputOption = SpreadsheetsResource.ValuesResource.UpdateRequest.ValueInputOptionEnum.RAW;
+            await request.ExecuteAsync();
         }
     }
 }

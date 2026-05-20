@@ -38,6 +38,7 @@ namespace dev_library.Data
         public GuildFeatures Features { get; set; }
         public DroptimizerSettings Droptimizer { get; set; }
         public GoogleSheetsSettings GoogleSheet { get; set; }
+        public ApplicationSheetSettings ApplicationSheet { get; set; }
     }
 
     public class GuildFeatures
@@ -61,6 +62,12 @@ namespace dev_library.Data
         public string Id { get; set; }
         public string SheetName { get; set; }
         public string CredentialsPath { get; set; }
+    }
+
+    public class ApplicationSheetSettings
+    {
+        public string Id { get; set; }
+        public string SheetName { get; set; }
     }
 
     public class BattleNetSettings
