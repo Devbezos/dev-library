@@ -33,6 +33,8 @@ namespace dev_library.Data.Discord
                 )
                 """;
             cmd.ExecuteNonQuery();
+
+            GuildRepository.EnsureTable();
         }
 
         public static List<AppChannelEntry> Load()
