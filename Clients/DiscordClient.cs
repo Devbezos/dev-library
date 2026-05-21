@@ -1,4 +1,5 @@
-﻿using dev_library.Data;
+﻿using dev_library.Clients;
+using dev_library.Data;
 using dev_library.Data.Discord;
 using Discord;
 using Serilog;
@@ -92,6 +93,54 @@ namespace dev_refined.Clients
                 chunks.Add(current.ToString().TrimEnd());
 
             return chunks;
+        }
+
+        public async Task<List<TrackedApplication>> CheckNewApplications(GoogleSheetsClient sheetsClient)
+        {
+            Log.Information("DiscordClient.CheckNewApplications: START");
+            var result = new List<TrackedApplication>();
+            var guildsWithApps = AppSettings.Guilds.Where(g =>
+                g.ApplicationSheet != null &&
+                g.Channels?.ContainsKey("applicationsCategory") == true &&
+                g.Channels?.ContainsKey("applicationsOfficer") == true);
+
+            foreach (var guild in guildsWithApps)
+            {
+                var categoryId = guild.Channels["applicationsCategory"];
+                var officerChannelId = guild.Channels["applicationsOfficer"];
+                var archiveCategoryId = guild.Channels.GetValueOrDefault("applicationsArchiveCategory");
+                var applications = await sheetsClient.ReadApplications(guild.ApplicationSheet);
+                var unposted = applications.Where(a => !a.IsPosted).ToList();
+
+                if (unposted.Count == 0) continue;
+
+                foreach (var app in unposted)
+                {
+                    Log.Information("DiscordClient.CheckNewApplications: Posting application row {Row} from {Contact}", app.RowIndex, app.ContactInfo);
+                    var (channelId, messageIds) = await PostApplication(categoryId, officerChannelId, app);
+                    foreach (var msgId in messageIds.Where(id => id != 0))
+                        result.Add(new TrackedApplication(msgId, channelId, archiveCategoryId, guild.DenyUserIds, guild.Name));
+                    await sheetsClient.MarkApplicationAsPosted(guild.ApplicationSheet, app.RowIndex);
+                }
+            }
+
+            Log.Information("DiscordClient.CheckNewApplications: END");
+            return result;
+        }
+
+        public async Task SendDroptimizerReminders(DateTime now)
+        {
+            Log.Information("DiscordClient.SendDroptimizerReminders: START");
+            foreach (var guild in AppSettings.Guilds.Where(g => g.Features.DroptimizerReminder && Helpers.IsGuildActive(g, now)))
+            {
+                var roles = guild.RolesToPing?.Length > 0
+                    ? string.Join(" ", guild.RolesToPing.Select(r => $"<@&{r}>")) + " "
+                    : "";
+                var channelId = guild.Channels?.GetValueOrDefault("droptimizer") ?? 0;
+                if (channelId != 0)
+                    await PostToChannel(channelId, $"{roles}Make sure to post droptimizers or you're not getting loot");
+            }
+            Log.Information("DiscordClient.SendDroptimizerReminders: END");
         }
 
         public async Task PostWebHook(List<Search> searchResults)

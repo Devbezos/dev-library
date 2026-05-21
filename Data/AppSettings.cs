@@ -13,6 +13,8 @@ namespace dev_library.Data
         // public static GptSettings GptSettings { get; set; }
         public static string BasePath { get; set; } = $"{Path.GetPathRoot(AppContext.BaseDirectory)}Code";
 
+        public static MySqlSettings MySql { get; set; } = new();
+
         public static void Initialize()
         {
             var config = new ConfigurationBuilder()
@@ -25,6 +27,7 @@ namespace dev_library.Data
             BattleNet = config.GetSection("battleNet").Get<BattleNetSettings>();
             Guilds = config.GetSection("guilds").Get<GuildSettings[]>();
             Soundboard = config.GetSection("soundboard").Get<SoundboardSettings>() ?? new SoundboardSettings();
+            MySql = config.GetSection("mySql").Get<MySqlSettings>() ?? new MySqlSettings();
             // FitbitSettings = config.GetSection("fitbit").Get<FitbitSettings>();
             // GptSettings = config.GetSection("gpt").Get<GptSettings>();
         }
@@ -106,4 +109,9 @@ namespace dev_library.Data
     //     public string Suffix { get; set; }
     //     public string AllowedRoles { get; set; }
     // }
+
+    public class MySqlSettings
+    {
+        public string ConnectionString { get; set; } = "Server=localhost;Port=3306;Database=dev_bot;Uid=root;Pwd=;";
+    }
 }

@@ -54,6 +54,14 @@ namespace dev_library.Data
 
             return urls;
         }
+
+        public static bool IsKeyAuditTime(DateTime now) =>
+            (now.DayOfWeek == DayOfWeek.Friday && now.Hour == 20 && now.Minute == 0) ||
+            (now.DayOfWeek == DayOfWeek.Monday && now.Hour == 17 && now.Minute == 0);
+
+        public static bool IsGuildActive(GuildSettings guild, DateTime now) =>
+            (guild.Droptimizer?.StartDate == null || now >= guild.Droptimizer.StartDate.Value) &&
+            (guild.Droptimizer?.EndDate == null || now <= guild.Droptimizer.EndDate.Value);
     }
 
 }
