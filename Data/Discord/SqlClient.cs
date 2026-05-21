@@ -6,12 +6,22 @@ namespace dev_library.Data.Discord
 
     public record TrackedApplication(ulong MessageId, ulong ChannelId, ulong ArchiveCategoryId, ulong[] DenyUserIds, string GuildName);
 
-    public static class ApplicationChannelCache
+    public static class SqlClient
     {
         public static string ConnectionString { get; set; } = "Server=localhost;Port=3306;Database=dev_bot;Uid=root;Pwd=;";
 
         public static void EnsureTable()
         {
+            var builder = new MySqlConnectionStringBuilder(ConnectionString);
+            var dbName = builder.Database;
+            builder.Database = string.Empty;
+
+            using var adminConn = new MySqlConnection(builder.ConnectionString);
+            adminConn.Open();
+            using var createDb = adminConn.CreateCommand();
+            createDb.CommandText = $"CREATE DATABASE IF NOT EXISTS `{dbName}`";
+            createDb.ExecuteNonQuery();
+
             using var conn = new MySqlConnection(ConnectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
