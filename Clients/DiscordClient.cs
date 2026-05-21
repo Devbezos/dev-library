@@ -97,7 +97,7 @@ namespace dev_refined.Clients
 
         public async Task<List<TrackedApplication>> CheckNewApplications(GoogleSheetsClient sheetsClient)
         {
-            Log.Information("DiscordClient.CheckNewApplications: START");
+            Log.Debug("DiscordClient.CheckNewApplications: START");
             var result = new List<TrackedApplication>();
             var guildsWithApps = AppSettings.Guilds.Where(g =>
                 g.ApplicationSheet != null &&
@@ -124,13 +124,13 @@ namespace dev_refined.Clients
                 }
             }
 
-            Log.Information("DiscordClient.CheckNewApplications: END");
+            Log.Debug("DiscordClient.CheckNewApplications: END");
             return result;
         }
 
         public async Task SendDroptimizerReminders(DateTime now)
         {
-            Log.Information("DiscordClient.SendDroptimizerReminders: START");
+            Log.Debug("DiscordClient.SendDroptimizerReminders: START");
             foreach (var guild in AppSettings.Guilds.Where(g => g.Features.DroptimizerReminder && Helpers.IsGuildActive(g, now)))
             {
                 var roles = guild.RolesToPing?.Length > 0
@@ -140,7 +140,7 @@ namespace dev_refined.Clients
                 if (channelId != 0)
                     await PostToChannel(channelId, $"{roles}Make sure to post droptimizers or you're not getting loot");
             }
-            Log.Information("DiscordClient.SendDroptimizerReminders: END");
+            Log.Debug("DiscordClient.SendDroptimizerReminders: END");
         }
 
         public async Task PostWebHook(List<Search> searchResults)
