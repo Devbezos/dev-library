@@ -55,6 +55,38 @@ namespace dev_library.Data
             return urls;
         }
 
+        public static List<(string Url, string? Region, string? Realm, string? Character, int? CharacterId)> ExtractWarcraftLogsCharacterUrls(string text)
+        {
+            var results = new List<(string, string?, string?, string?, int?)>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            // Match /character/us/realm/name
+            var namePattern = @"https://(?:www\.)?warcraftlogs\.com/character/(us|eu|kr|tw)/([^/#\s?&""<>\n]+)/([^/#\s?&""<>\n]+)";
+            foreach (Match match in Regex.Matches(text, namePattern, RegexOptions.IgnoreCase))
+            {
+                var url = match.Value.TrimEnd('/', '\\', '.');
+                var region = match.Groups[1].Value.ToLower();
+                var realm = match.Groups[2].Value.ToLower();
+                var character = match.Groups[3].Value.ToLower();
+                var key = $"{region}/{realm}/{character}";
+                if (seen.Add(key))
+                    results.Add((url, region, realm, character, null));
+            }
+
+            // Match /character/id/NNNNNNN
+            var idPattern = @"https://(?:www\.)?warcraftlogs\.com/character/id/(\d+)";
+            foreach (Match match in Regex.Matches(text, idPattern, RegexOptions.IgnoreCase))
+            {
+                var url = match.Value.TrimEnd('/', '\\', '.');
+                var id = int.Parse(match.Groups[1].Value);
+                var key = $"id/{id}";
+                if (seen.Add(key))
+                    results.Add((url, null, null, null, id));
+            }
+
+            return results;
+        }
+
         public static bool IsKeyAuditTime(DateTime now) =>
             (now.DayOfWeek == DayOfWeek.Friday && now.Hour == 20 && now.Minute == 0) ||
             (now.DayOfWeek == DayOfWeek.Monday && now.Hour == 17 && now.Minute == 0);

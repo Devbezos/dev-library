@@ -137,6 +137,9 @@ namespace dev_library.Clients
                 return applications;
 
             // Row 1 (index 0) is the header; data starts at index 1 = sheet row 2
+            var header = values[0];
+            string Header(int col) => header.Count > col ? header[col]?.ToString() ?? string.Empty : string.Empty;
+
             for (var i = 1; i < values.Count; i++)
             {
                 var row = values[i];
@@ -151,15 +154,24 @@ namespace dev_library.Clients
                     RowIndex = i + 1, // i is 0-based list index; sheet row = i + 1 (header is row 1)
                     IsPosted = Cell(11).Equals("TRUE", StringComparison.OrdinalIgnoreCase),
                     Timestamp = timestamp,
+                    ContactInfoLabel = Header(1),
                     ContactInfo = Cell(1),
+                    ClassSpecLabel = Header(2),
                     ClassSpec = Cell(2),
+                    MulticlassingLabel = Header(3),
                     Multiclassing = Cell(3),
+                    CanMakeRaidTimesLabel = Header(4),
                     CanMakeRaidTimes = Cell(4),
+                    WarcraftLogsLabel = Header(5),
                     WarcraftLogs = Cell(5),
                     PrivateLogCredentials = Cell(6),
+                    MythicExperienceLabel = Header(7),
                     MythicExperience = Cell(7),
+                    ReasonForLeavingLabel = Header(8),
                     ReasonForLeaving = Cell(8),
-                    WhyReforged = Cell(9),
+                    WhyGuildLabel = Header(9),
+                    WhyGuild = Cell(9),
+                    AnythingElseLabel = Header(10),
                     AnythingElse = Cell(10)
                 });
             }

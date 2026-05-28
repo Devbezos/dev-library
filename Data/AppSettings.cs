@@ -14,6 +14,7 @@ namespace dev_library.Data
         public static string BasePath { get; set; } = $"{Path.GetPathRoot(AppContext.BaseDirectory)}Code";
 
         public static MySqlSettings MySql { get; set; } = new();
+        public static WarcraftLogsSettings? WarcraftLogs { get; set; }
 
         public static void Initialize()
         {
@@ -28,6 +29,7 @@ namespace dev_library.Data
             Guilds = config.GetSection("guilds").Get<GuildSettings[]>();
             Soundboard = config.GetSection("soundboard").Get<SoundboardSettings>() ?? new SoundboardSettings();
             MySql = config.GetSection("mySql").Get<MySqlSettings>() ?? new MySqlSettings();
+            WarcraftLogs = config.GetSection("warcraftLogs").Get<WarcraftLogsSettings>();
             // FitbitSettings = config.GetSection("fitbit").Get<FitbitSettings>();
             // GptSettings = config.GetSection("gpt").Get<GptSettings>();
         }
@@ -113,5 +115,18 @@ namespace dev_library.Data
     public class MySqlSettings
     {
         public string ConnectionString { get; set; } = "Server=localhost;Port=3306;Database=dev_bot;Uid=root;Pwd=;";
+    }
+
+    public class WarcraftLogsSettings
+    {
+        public string ClientId { get; set; }
+        public string ClientSecret { get; set; }
+        public WarcraftLogsZone[] Zones { get; set; } = Array.Empty<WarcraftLogsZone>();
+    }
+
+    public class WarcraftLogsZone
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
     }
 }

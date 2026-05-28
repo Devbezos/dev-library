@@ -6,15 +6,24 @@ namespace dev_library.Data.Discord
         public int RowIndex { get; init; }  // 1-based sheet row number
         public bool IsPosted { get; init; }
         public DateTime Timestamp { get; init; }
-        public string ContactInfo { get; init; }
-        public string ClassSpec { get; init; }
+        public string ContactInfoLabel { get; init; } = string.Empty;
+        public string ContactInfo { get; init; } = string.Empty;
+        public string ClassSpecLabel { get; init; } = string.Empty;
+        public string ClassSpec { get; init; } = string.Empty;
+        public string MulticlassingLabel { get; init; } = string.Empty;
         public string? Multiclassing { get; init; }
-        public string CanMakeRaidTimes { get; init; }
-        public string WarcraftLogs { get; init; }
+        public string CanMakeRaidTimesLabel { get; init; } = string.Empty;
+        public string CanMakeRaidTimes { get; init; } = string.Empty;
+        public string WarcraftLogsLabel { get; init; } = string.Empty;
+        public string WarcraftLogs { get; init; } = string.Empty;
         public string? PrivateLogCredentials { get; init; }
-        public string MythicExperience { get; init; }
-        public string ReasonForLeaving { get; init; }
-        public string WhyReforged { get; init; }
+        public string MythicExperienceLabel { get; init; } = string.Empty;
+        public string MythicExperience { get; init; } = string.Empty;
+        public string ReasonForLeavingLabel { get; init; } = string.Empty;
+        public string ReasonForLeaving { get; init; } = string.Empty;
+        public string WhyGuildLabel { get; init; } = string.Empty;
+        public string WhyGuild { get; init; } = string.Empty;
+        public string AnythingElseLabel { get; init; } = string.Empty;
         public string? AnythingElse { get; init; }
 
         public string ToDiscordMessage()
@@ -39,24 +48,24 @@ namespace dev_library.Data.Discord
             var sb = new System.Text.StringBuilder();
 
             sb.AppendLine("## 📋 New Guild Application");
-            sb.AppendLine($"**Contact / Character:** {ContactInfo}");
-            sb.AppendLine($"**Class & Spec:** {ClassSpec}");
+            sb.AppendLine($"**{ContactInfoLabel}:** {ContactInfo}");
+            sb.AppendLine($"**{ClassSpecLabel}:** {ClassSpec}");
 
             if (!string.IsNullOrWhiteSpace(Multiclassing))
-                sb.AppendLine($"**Multiclassing:** {Multiclassing}");
+                sb.AppendLine($"**{MulticlassingLabel}:** {Multiclassing}");
 
-            sb.AppendLine($"**Raid Times (Mon–Thurs 8:45PM–12AM EST):** {CanMakeRaidTimes}");
-            sb.AppendLine($"**Warcraft Logs:** {WarcraftLogs}");
-            sb.AppendLine("**Mythic Raiding Experience:**");
+            sb.AppendLine($"**{CanMakeRaidTimesLabel}:** {CanMakeRaidTimes}");
+            sb.AppendLine($"**{WarcraftLogsLabel}:** {WarcraftLogs}");
+            sb.AppendLine($"**{MythicExperienceLabel}:**");
             sb.AppendLine(Blockquote(MythicExperience));
-            sb.AppendLine("**Reason for Leaving:**");
+            sb.AppendLine($"**{ReasonForLeavingLabel}:**");
             sb.AppendLine(Blockquote(ReasonForLeaving));
-            sb.AppendLine("**Why Reforged:**");
-            sb.AppendLine(Blockquote(WhyReforged));
+            sb.AppendLine($"**{WhyGuildLabel}:**");
+            sb.AppendLine(Blockquote(WhyGuild));
 
             if (!string.IsNullOrWhiteSpace(AnythingElse))
             {
-                sb.AppendLine("**Anything Else:**");
+                sb.AppendLine($"**{AnythingElseLabel}:**");
                 sb.AppendLine(Blockquote(AnythingElse));
             }
 
@@ -79,20 +88,20 @@ namespace dev_library.Data.Discord
                 .WithColor(new Color(0x5865F2))
                 .WithFooter($"Submitted {Timestamp:MMM d, yyyy 'at' h:mm tt} UTC");
 
-            AddField(builder, "Contact information - Discord (case sensitive), Character name & server", ContactInfo);
-            AddField(builder, "Main class & spec", ClassSpec);
+            AddField(builder, ContactInfoLabel, ContactInfo);
+            AddField(builder, ClassSpecLabel, ClassSpec);
 
             if (!string.IsNullOrWhiteSpace(Multiclassing))
-                AddField(builder, "Are you comfortable multiclassing? (not required)", Multiclassing);
+                AddField(builder, MulticlassingLabel, Multiclassing);
 
-            AddField(builder, "Can u make 8:45PM-12:00AM EST Mon-Thurs?", CanMakeRaidTimes);
-            AddField(builder, "Warcraft Logs - include a link for all characters played in recent tiers for progression", WarcraftLogs);
-            AddField(builder, "What is your Mythic raiding experience? - name the guild you progged with & the circumstance for leaving that guild", MythicExperience);
-            AddField(builder, "Reason for leaving current/previous guild?", ReasonForLeaving);
-            AddField(builder, "Why do you want to join Reforged?", WhyReforged);
+            AddField(builder, CanMakeRaidTimesLabel, CanMakeRaidTimes);
+            AddField(builder, WarcraftLogsLabel, WarcraftLogs);
+            AddField(builder, MythicExperienceLabel, MythicExperience);
+            AddField(builder, ReasonForLeavingLabel, ReasonForLeaving);
+            AddField(builder, WhyGuildLabel, WhyGuild);
 
             if (!string.IsNullOrWhiteSpace(AnythingElse))
-                AddField(builder, "Anything else you want us to know?", AnythingElse);
+                AddField(builder, AnythingElseLabel, AnythingElse);
 
             return builder.Build();
         }

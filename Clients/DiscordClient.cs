@@ -3,6 +3,7 @@ using dev_library.Data;
 using dev_library.Data.Discord;
 using Discord;
 using Serilog;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace dev_refined.Clients
