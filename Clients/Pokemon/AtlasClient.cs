@@ -1,5 +1,6 @@
 ﻿using dev_library.Data;
 using HtmlAgilityPack;
+using Serilog;
 
 namespace dev_library.Clients
 {
@@ -15,9 +16,10 @@ namespace dev_library.Clients
 
         public async Task<List<Search>> GetPokemon()
         {
-            Console.WriteLine("AtlasClient.GetProducts: START");
+            Log.Information("AtlasClient.GetProducts: START");
             var searchList = new List<Search>();
-            client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
+            if (!client.DefaultRequestHeaders.Contains("User-Agent"))
+                client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
 
             try
             {
@@ -32,7 +34,7 @@ namespace dev_library.Clients
 
                     if (products == null || products.Count == 0)
                     {
-                        Console.WriteLine($"No {keyword} found");
+                        Log.Information("No {Keyword} found", keyword);
                         continue;
                     }
 
@@ -50,17 +52,17 @@ namespace dev_library.Clients
                         searchList.Add(new Search(keyword, "Atlas", inStockProducts));
                     }
 
-                    Console.WriteLine($"AtlasClient.GetProducts: Found {products.Count} {keyword} products with {inStockProducts.Count} in stock");
-                    Thread.Sleep(5000);
+                    Log.Information("AtlasClient.GetProducts: Found {Total} {Keyword} products with {InStock} in stock", products.Count, keyword, inStockProducts.Count);
+                    await Task.Delay(5000);
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"AtlasClient.GetProducts: Error fetching webpage: {ex.Message}");
+                Log.Error(ex, "AtlasClient.GetProducts: Error fetching webpage");
             }
             finally
             {
-                Console.WriteLine("AtlasClient.GetProducts: END");
+                Log.Information("AtlasClient.GetProducts: END");
             }
             return searchList;
         }

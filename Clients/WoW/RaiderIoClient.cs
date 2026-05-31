@@ -15,7 +15,8 @@ namespace dev_refined.Clients
                 $"{Constants.WoW.RaiderIo.Url}/characters/profile?region=us&realm={guildy.Realm}&name={guildy.Name}&fields=mythic_plus_weekly_highest_level_runs,gear");
 
             request.Headers.TryAddWithoutValidation("accept", "application/json");
-            var response = await client.SendAsync(request).Result.Content.ReadAsStringAsync().ConfigureAwait(false);
+            using var httpResponse = await client.SendAsync(request);
+            var response = await httpResponse.Content.ReadAsStringAsync();
             var keyResponse = JsonConvert.DeserializeObject<RaiderIoKeyResponse>(response);
 
             Log.Information("RaiderIoClient.GetWeeklyKeyHistory: END");

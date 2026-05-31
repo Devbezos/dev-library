@@ -24,7 +24,8 @@ namespace dev_refined.Clients
             request.Content = new StringContent("grant_type=client_credentials");
             request.Content.Headers.ContentType = MediaTypeHeaderValue.Parse("application/x-www-form-urlencoded");
 
-            var response = await client.SendAsync(request).Result.Content.ReadAsStringAsync().ConfigureAwait(false); ;
+            using var httpResponse = await client.SendAsync(request);
+            var response = await httpResponse.Content.ReadAsStringAsync();
 
             return JsonConvert.DeserializeObject<BlizzardOAuthResponse>(response).AccessToken;
         }
@@ -37,7 +38,8 @@ namespace dev_refined.Clients
             request.Headers.TryAddWithoutValidation("accept", "application/json");
             request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {token}");
 
-            var response = await client.SendAsync(request).Result.Content.ReadAsStringAsync().ConfigureAwait(false); ;
+            using var httpResponse = await client.SendAsync(request);
+            var response = await httpResponse.Content.ReadAsStringAsync();
 
             return JsonConvert.DeserializeObject<BlizzardRealmResponse>(response);
         }
@@ -50,7 +52,8 @@ namespace dev_refined.Clients
             request.Headers.TryAddWithoutValidation("accept", "application/json");
             request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {token}");
 
-            var response = await client.SendAsync(request).Result.Content.ReadAsStringAsync().ConfigureAwait(false);
+            using var httpResponse = await client.SendAsync(request);
+            var response = await httpResponse.Content.ReadAsStringAsync();
 
             var realmList = JsonConvert.DeserializeObject<BlizzardRealmsResponse>(response);
 
@@ -65,7 +68,8 @@ namespace dev_refined.Clients
             request.Headers.TryAddWithoutValidation("accept", "application/json");
             request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {token}");
 
-            var response = await client.SendAsync(request).Result.Content.ReadAsStringAsync().ConfigureAwait(false); ;
+            using var httpResponse = await client.SendAsync(request);
+            var response = await httpResponse.Content.ReadAsStringAsync();
 
             return JsonConvert.DeserializeObject<JObject>(response)["name"].ToString();
         }
@@ -82,7 +86,8 @@ namespace dev_refined.Clients
                 request.Headers.TryAddWithoutValidation("accept", "application/json");
                 request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {token}");
 
-                var response = await client.SendAsync(request).Result.Content.ReadAsStringAsync().ConfigureAwait(false);
+                using var httpResponse = await client.SendAsync(request);
+                var response = await httpResponse.Content.ReadAsStringAsync();
 
                 var auctions = JsonConvert.DeserializeObject<BlizzardAuctionResponse>(response);
 

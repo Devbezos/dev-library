@@ -22,17 +22,18 @@ namespace dev_refined.Clients
                 request.Headers.TryAddWithoutValidation("accept", "application/json");
                 request.Headers.TryAddWithoutValidation("Authorization", AppSettings.Guilds.First(g => g.Name == guild.ToUpper()).Droptimizer.Token);
 
-                var response = await client.SendAsync(request).Result.Content.ReadAsStringAsync().ConfigureAwait(false);
+                using var httpResponse = await client.SendAsync(request);
+                var response = await httpResponse.Content.ReadAsStringAsync();
 
                 var guildies = JsonConvert.DeserializeObject<List<WoWAuditCharacter>>(response);
 
-                Log.Information($"WoWAuditClient.GetCharacters: found {guildies.Count}");
+                Log.Information("WoWAuditClient.GetCharacters: found {Count}", guildies.Count);
                 Log.Information("WoWAuditClient.GetCharacters: END");
                 return guildies;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                Console.WriteLine("WoWAuditClient.GetCharacters: failed");
+                Log.Error(ex, "WoWAuditClient.GetCharacters: failed");
                 throw;
             }
         }
@@ -46,13 +47,13 @@ namespace dev_refined.Clients
                 using var client = new HttpClient();
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", AppSettings.Guilds.First(g => g.Name == guild.ToUpper()).Droptimizer.Token);
                 var requestBody = new StringContent(JsonConvert.SerializeObject(new WoWAuditWishlistRequest(reportId)), Encoding.UTF8, ContentType.Json);
-                response = await client.PostAsync($"{Constants.WoW.WoWAudit.Url}/wishlists", requestBody).Result.Content.ReadAsStringAsync().ConfigureAwait(false);
+                using var httpResponse = await client.PostAsync($"{Constants.WoW.WoWAudit.Url}/wishlists", requestBody);
+                response = await httpResponse.Content.ReadAsStringAsync();
                 return JsonConvert.DeserializeObject<WoWAuditWishlistResponse>(response);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                Log.Warning("WoWAuditClient.UpdateWishlist: failed");
-                Log.Debug(response);
+                Log.Warning(ex, "WoWAuditClient.UpdateWishlist: failed. Body: {Body}", response);
                 throw;
             }
             finally
