@@ -36,9 +36,9 @@ namespace dev_refined
                     Log.Information($"RefinedClient.PostBadPlayers: Getting key info for {guildy.Name}");
 
                     var weeklyKeys = await _raiderIoClient.GetWeeklyKeyHistory(guildy);
-                    var maxKeyCount = weeklyKeys?.MythicPlusWeeklyHighestLevelRuns.Count(k => k.MythicLevel >= Constants.MAX_KEY_LEVEL) ?? 0;
+                    var maxKeyCount = weeklyKeys?.MythicPlusWeeklyHighestLevelRuns.Count(k => k.MythicLevel >= Constants.WoW.MaxKeyLevel) ?? 0;
 
-                    Log.Information($"RefinedClient.PostBadPlayers: {guildy.Name} performed {maxKeyCount} +{Constants.MAX_KEY_LEVEL}s this week");
+                    Log.Information($"RefinedClient.PostBadPlayers: {guildy.Name} performed {maxKeyCount} +{Constants.WoW.MaxKeyLevel}s this week");
 
                     if (maxKeyCount < 8)
                     {
@@ -46,7 +46,7 @@ namespace dev_refined
                     }
                 }
 
-                var table = $"Key Audit for +{Constants.MAX_KEY_LEVEL} keys\n```\n";
+                var table = $"Key Audit for +{Constants.WoW.MaxKeyLevel} keys\n```\n";
                 table += $"|--------------|----------|------|\n";
 
                 var props = badPlayers[0].GetType().GetProperties();

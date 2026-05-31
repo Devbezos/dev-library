@@ -15,6 +15,7 @@ namespace dev_library.Data
 
         public static MySqlSettings MySql { get; set; } = new();
         public static WarcraftLogsSettings? WarcraftLogs { get; set; }
+        public static GoogleHealthUserSettings[] GoogleHealth { get; set; } = Array.Empty<GoogleHealthUserSettings>();
 
         public static void Initialize()
         {
@@ -26,10 +27,11 @@ namespace dev_library.Data
             DryRun = config.GetValue<bool>("dryRun");
             Discord = config.GetSection("discord").Get<DiscordSettings>();
             BattleNet = config.GetSection("battleNet").Get<BattleNetSettings>();
-            Guilds = config.GetSection("guilds").Get<GuildSettings[]>();
+            Guilds = config.GetSection("guilds").Get<GuildSettings[]>() ?? Array.Empty<GuildSettings>();
             Soundboard = config.GetSection("soundboard").Get<SoundboardSettings>() ?? new SoundboardSettings();
             MySql = config.GetSection("mySql").Get<MySqlSettings>() ?? new MySqlSettings();
             WarcraftLogs = config.GetSection("warcraftLogs").Get<WarcraftLogsSettings>();
+            GoogleHealth = config.GetSection("googleHealth").Get<GoogleHealthUserSettings[]>() ?? Array.Empty<GoogleHealthUserSettings>();
             // FitbitSettings = config.GetSection("fitbit").Get<FitbitSettings>();
             // GptSettings = config.GetSection("gpt").Get<GptSettings>();
         }
@@ -128,5 +130,15 @@ namespace dev_library.Data
     {
         public int Id { get; set; }
         public string Name { get; set; }
+    }
+
+    public class GoogleHealthUserSettings
+    {
+        public string Username { get; set; } = string.Empty;
+        public string ClientId { get; set; } = string.Empty;
+        public string ClientSecret { get; set; } = string.Empty;
+        public string RefreshToken { get; set; } = string.Empty;
+        public ulong ChannelId { get; set; }
+        public bool Enabled { get; set; } = true;
     }
 }

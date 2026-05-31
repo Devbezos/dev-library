@@ -1,10 +1,53 @@
-﻿namespace dev_refined.Data
+﻿namespace dev_library.Data
 {
     public static class Constants
     {
-        public const string RAIDER_IO_URL = "https://raider.io/api/v1";
-        public const string WOW_AUDIT_URL = "https://wowaudit.com/v1";
-        public const int MAX_KEY_LEVEL = 10;
-        public static string[] ERROR_MESSAGES = new string[] { "Upgrade All Equipped Gear to the Same Level" };
+        public static class Jobs
+        {
+            public const string FitnessDaily        = "fitness_daily";
+            public const string FitnessWeekly       = "fitness_weekly";
+            public const string DroptimizerReminder = "droptimizer_reminder";
+        }
+
+        public static class GoogleHealth
+        {
+            public const string TokenUrl = "https://oauth2.googleapis.com/token";
+            public const string BaseUrl  = "https://health.googleapis.com/v4";
+        }
+
+        public static class WoW
+        {
+            public const int MaxKeyLevel = 10;
+            public static readonly string[] ErrorMessages = ["Upgrade All Equipped Gear to the Same Level"];
+
+            public static class RaiderIo
+            {
+                public const string Url = "https://raider.io/api/v1";
+            }
+
+            public static class WoWAudit
+            {
+                public const string Url = "https://wowaudit.com/v1";
+            }
+
+            public static class BattleNet
+            {
+                public const string RealmDataEndpoint = "/connected-realm/61?namespace=dynamic-us&locale=en_US";
+                public const string AllRealmsEndpoint  = "/connected-realm/index?namespace=dynamic-us&locale=en_US";
+                public const string ItemNameEndpoint   = "/item/{0}?namespace=static-us&locale=en_US";
+            }
+
+            public static class WarcraftLogs
+            {
+                public const string TokenUrl = "https://www.warcraftlogs.com/oauth/token";
+                public const string ApiUrl   = "https://www.warcraftlogs.com/api/v2/client";
+            }
+
+            public static class RaidBots
+            {
+                public const string CacheName   = "wowcache.json";
+                public const string FileUrlBase = "https://raidbots.com/reports/{0}/data.csv";
+            }
+        }
     }
 }

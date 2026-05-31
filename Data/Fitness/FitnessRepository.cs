@@ -1,0 +1,241 @@
+using dev_library.Data.Discord;
+using MySqlConnector;
+
+namespace dev_library.Data.Fitness
+{
+    public class FitnessUser
+    {
+        public string Username  { get; set; } = string.Empty;
+        public ulong  ChannelId { get; set; }
+        public bool   Enabled   { get; set; }
+    }
+
+    public static class FitnessRepository
+    {
+        public static void EnsureTable()
+        {
+            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+
+            cmd.CommandText = """
+                CREATE TABLE IF NOT EXISTS fitness_posts (
+                    id        INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    username  VARCHAR(255) NOT NULL,
+                    post_type VARCHAR(10)  NOT NULL,
+                    posted_at DATETIME     NOT NULL
+                )
+                """;
+            cmd.ExecuteNonQuery();
+
+            // fitness_users — create if not present (includes credential columns)
+            cmd.CommandText = """
+                CREATE TABLE IF NOT EXISTS fitness_users (
+                    username      VARCHAR(255)    NOT NULL PRIMARY KEY,
+                    channel_id    BIGINT UNSIGNED NOT NULL DEFAULT 0,
+                    enabled       TINYINT(1)      NOT NULL DEFAULT 1,
+                    client_id     VARCHAR(255)    NOT NULL DEFAULT '',
+                    client_secret VARCHAR(255)    NOT NULL DEFAULT '',
+                    refresh_token VARCHAR(2048)   NOT NULL DEFAULT ''
+                )
+                """;
+            cmd.ExecuteNonQuery();
+
+            // Migration: add credential columns to existing tables that predate this change
+            foreach (var (col, def) in new[]
+            {
+                ("client_id",     "VARCHAR(255)  NOT NULL DEFAULT ''"),
+                ("client_secret", "VARCHAR(255)  NOT NULL DEFAULT ''"),
+                ("refresh_token", "VARCHAR(2048) NOT NULL DEFAULT ''"),
+            })
+            {
+                cmd.CommandText = $"""
+                    SELECT COUNT(*) FROM information_schema.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE()
+                      AND TABLE_NAME   = 'fitness_users'
+                      AND COLUMN_NAME  = '{col}'
+                    """;
+                if (Convert.ToInt64(cmd.ExecuteScalar()) == 0)
+                {
+                    cmd.CommandText = $"ALTER TABLE fitness_users ADD COLUMN {col} {def}";
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        public static void LogPost(string username, string postType)
+        {
+            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "INSERT INTO fitness_posts (username, post_type, posted_at) VALUES (@username, @postType, @postedAt)";
+            cmd.Parameters.AddWithValue("@username", username);
+            cmd.Parameters.AddWithValue("@postType", postType);
+            cmd.Parameters.AddWithValue("@postedAt", DateTime.UtcNow);
+            cmd.ExecuteNonQuery();
+        }
+
+        /// <summary>
+        /// Seeds fitness_users from appsettings GoogleHealth config (one-time migration).
+        /// Credentials are only written to rows that currently have empty credentials.
+        /// </summary>
+        public static void EnsureUsersTable(GoogleHealthUserSettings[] users)
+        {
+            if (users.Length == 0) return;
+            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            conn.Open();
+            foreach (var user in users)
+            {
+                using var seed = conn.CreateCommand();
+                seed.CommandText = """
+                    INSERT INTO fitness_users (username, channel_id, enabled, client_id, client_secret, refresh_token)
+                    VALUES (@username, @channelId, 1, @clientId, @clientSecret, @refreshToken)
+                    ON DUPLICATE KEY UPDATE
+                        client_id     = IF(client_id     = '', @clientId,     client_id),
+                        client_secret = IF(client_secret = '', @clientSecret, client_secret),
+                        refresh_token = IF(refresh_token = '', @refreshToken, refresh_token)
+                    """;
+                seed.Parameters.AddWithValue("@username",     user.Username);
+                seed.Parameters.AddWithValue("@channelId",    user.ChannelId);
+                seed.Parameters.AddWithValue("@clientId",     user.ClientId);
+                seed.Parameters.AddWithValue("@clientSecret", user.ClientSecret);
+                seed.Parameters.AddWithValue("@refreshToken", user.RefreshToken);
+                seed.ExecuteNonQuery();
+            }
+        }
+
+        public static GoogleHealthUserSettings[] GetGoogleHealthSettings()
+        {
+            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT username, channel_id, enabled, client_id, client_secret, refresh_token FROM fitness_users ORDER BY username";
+            using var reader = cmd.ExecuteReader();
+            var result = new List<GoogleHealthUserSettings>();
+            while (reader.Read())
+                result.Add(new GoogleHealthUserSettings
+                {
+                    Username     = reader.GetString("username"),
+                    ChannelId    = reader.GetUInt64("channel_id"),
+                    Enabled      = reader.GetBoolean("enabled"),
+                    ClientId     = reader.GetString("client_id"),
+                    ClientSecret = reader.GetString("client_secret"),
+                    RefreshToken = reader.GetString("refresh_token"),
+                });
+            return [.. result];
+        }
+
+        public static void UpsertFitnessUser(string username, ulong channelId, bool enabled,
+            string clientId, string clientSecret, string refreshToken)
+        {
+            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO fitness_users (username, channel_id, enabled, client_id, client_secret, refresh_token)
+                VALUES (@username, @channelId, @enabled, @clientId, @clientSecret, @refreshToken)
+                ON DUPLICATE KEY UPDATE
+                    channel_id    = @channelId,
+                    enabled       = @enabled,
+                    client_id     = @clientId,
+                    client_secret = @clientSecret,
+                    refresh_token = @refreshToken
+                """;
+            cmd.Parameters.AddWithValue("@username",     username);
+            cmd.Parameters.AddWithValue("@channelId",    channelId);
+            cmd.Parameters.AddWithValue("@enabled",      enabled);
+            cmd.Parameters.AddWithValue("@clientId",     clientId);
+            cmd.Parameters.AddWithValue("@clientSecret", clientSecret);
+            cmd.Parameters.AddWithValue("@refreshToken", refreshToken);
+            cmd.ExecuteNonQuery();
+        }
+
+        public static List<FitnessUser> GetUsers()
+        {
+            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT username, channel_id, enabled FROM fitness_users WHERE enabled = 1";
+            using var reader = cmd.ExecuteReader();
+            var result = new List<FitnessUser>();
+            while (reader.Read())
+                result.Add(new FitnessUser
+                {
+                    Username  = reader.GetString("username"),
+                    ChannelId = reader.GetUInt64("channel_id"),
+                    Enabled   = reader.GetBoolean("enabled"),
+                });
+            return result;
+        }
+
+        public static List<FitnessUser> GetAllUsers()
+        {
+            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT username, channel_id, enabled FROM fitness_users ORDER BY username";
+            using var reader = cmd.ExecuteReader();
+            var result = new List<FitnessUser>();
+            while (reader.Read())
+                result.Add(new FitnessUser
+                {
+                    Username  = reader.GetString("username"),
+                    ChannelId = reader.GetUInt64("channel_id"),
+                    Enabled   = reader.GetBoolean("enabled"),
+                });
+            return result;
+        }
+
+        public static void UpdateUser(string username, ulong channelId, bool enabled)
+        {
+            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO fitness_users (username, channel_id, enabled)
+                VALUES (@username, @channelId, @enabled)
+                ON DUPLICATE KEY UPDATE channel_id = @channelId, enabled = @enabled
+                """;
+            cmd.Parameters.AddWithValue("@username", username);
+            cmd.Parameters.AddWithValue("@channelId", channelId);
+            cmd.Parameters.AddWithValue("@enabled", enabled);
+            cmd.ExecuteNonQuery();
+        }
+
+        public static List<FitnessPost> GetRecentPosts(int limit = 50)
+        {
+            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT username, post_type, posted_at FROM fitness_posts ORDER BY posted_at DESC LIMIT @limit";
+            cmd.Parameters.AddWithValue("@limit", limit);
+            using var reader = cmd.ExecuteReader();
+            var result = new List<FitnessPost>();
+            while (reader.Read())
+                result.Add(new FitnessPost
+                {
+                    Username  = reader.GetString("username"),
+                    PostType  = reader.GetString("post_type"),
+                    PostedAt  = reader.GetDateTime("posted_at"),
+                });
+            return result;
+        }
+
+        public static void DeleteUser(string username)
+        {
+            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM fitness_users WHERE username = @username";
+            cmd.Parameters.AddWithValue("@username", username);
+            cmd.ExecuteNonQuery();
+        }
+    }
+
+    public class FitnessPost
+    {
+        public string   Username { get; set; } = string.Empty;
+        public string   PostType { get; set; } = string.Empty;
+        public DateTime PostedAt { get; set; }
+    }
+}

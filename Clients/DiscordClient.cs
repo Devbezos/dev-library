@@ -28,14 +28,26 @@ namespace dev_refined.Clients
             Log.Information("DiscordClient.PostToChannel: END");
         }
 
-        public async Task<(ulong channelId, ulong[] messageIds)> PostApplication(ulong channelId, ulong officerChannelId, GuildApplication app)
+        public async Task PostEmbed(ulong channelId, Embed embed)
+        {
+            Log.Information("DiscordClient.PostEmbed: START");
+
+            if (SendEmbedAsync != null)
+                await SendEmbedAsync(channelId, embed);
+            else
+                Console.WriteLine($"[WARN] DiscordClient.SendEmbedAsync not wired up. Embed: {embed.Title}");
+
+            Log.Information("DiscordClient.PostEmbed: END");
+        }
+
+        public async Task<(ulong channelId, string channelName, ulong[] messageIds)> PostApplication(ulong channelId, ulong officerChannelId, GuildApplication app)
         {
             Log.Information("DiscordClient.PostApplication: START");
 
             if (CreateApplicationChannelAsync == null || SendEmbedWithIdAsync == null)
             {
                 Log.Warning("DiscordClient.PostApplication: delegates not wired up");
-                return (0, Array.Empty<ulong>());
+                return (0, string.Empty, Array.Empty<ulong>());
             }
 
             var channelName = SanitizeChannelName(app.ContactInfo);
@@ -49,7 +61,7 @@ namespace dev_refined.Clients
                 await PostToChannel(officerChannelId, officerMessage);
 
             Log.Information("DiscordClient.PostApplication: END");
-            return (threadId, new[] { msgId });
+            return (threadId, channelName, new[] { msgId });
         }
 
         private static string SanitizeChannelName(string contactInfo)
@@ -118,9 +130,9 @@ namespace dev_refined.Clients
                 foreach (var app in unposted)
                 {
                     Log.Information("DiscordClient.CheckNewApplications: Posting application row {Row} from {Contact}", app.RowIndex, app.ContactInfo);
-                    var (channelId, messageIds) = await PostApplication(categoryId, officerChannelId, app);
+                    var (channelId, channelName, messageIds) = await PostApplication(categoryId, officerChannelId, app);
                     foreach (var msgId in messageIds.Where(id => id != 0))
-                        result.Add(new TrackedApplication(msgId, channelId, archiveCategoryId, guild.DenyUserIds, guild.Name));
+                        result.Add(new TrackedApplication(msgId, channelId, archiveCategoryId, guild.DenyUserIds, guild.Name, channelName));
                     await sheetsClient.MarkApplicationAsPosted(guild.ApplicationSheet, app.RowIndex);
                 }
             }

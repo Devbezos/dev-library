@@ -17,7 +17,7 @@ namespace dev_refined.Clients
             try
             {
                 using var client = new HttpClient();
-                using var request = new HttpRequestMessage(new HttpMethod("GET"), $"{Constants.WOW_AUDIT_URL}/characters");
+                using var request = new HttpRequestMessage(new HttpMethod("GET"), $"{Constants.WoW.WoWAudit.Url}/characters");
 
                 request.Headers.TryAddWithoutValidation("accept", "application/json");
                 request.Headers.TryAddWithoutValidation("Authorization", AppSettings.Guilds.First(g => g.Name == guild.ToUpper()).Droptimizer.Token);
@@ -46,7 +46,7 @@ namespace dev_refined.Clients
                 using var client = new HttpClient();
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", AppSettings.Guilds.First(g => g.Name == guild.ToUpper()).Droptimizer.Token);
                 var requestBody = new StringContent(JsonConvert.SerializeObject(new WoWAuditWishlistRequest(reportId)), Encoding.UTF8, ContentType.Json);
-                response = await client.PostAsync($"{Constants.WOW_AUDIT_URL}/wishlists", requestBody).Result.Content.ReadAsStringAsync().ConfigureAwait(false);
+                response = await client.PostAsync($"{Constants.WoW.WoWAudit.Url}/wishlists", requestBody).Result.Content.ReadAsStringAsync().ConfigureAwait(false);
                 return JsonConvert.DeserializeObject<WoWAuditWishlistResponse>(response);
             }
             catch (Exception)

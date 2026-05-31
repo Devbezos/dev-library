@@ -10,8 +10,7 @@ namespace dev_library.Clients
 {
     public class WarcraftLogsClient
     {
-        private const string TokenUrl = "https://www.warcraftlogs.com/oauth/token";
-        private const string ApiUrl = "https://www.warcraftlogs.com/api/v2/client";
+
 
         private static string? _cachedToken;
         private static DateTime _tokenExpiry = DateTime.MinValue;
@@ -25,7 +24,7 @@ namespace dev_library.Clients
             var base64Auth = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{settings.ClientId}:{settings.ClientSecret}"));
 
             using var client = new HttpClient();
-            using var request = new HttpRequestMessage(HttpMethod.Post, TokenUrl);
+            using var request = new HttpRequestMessage(HttpMethod.Post, Constants.WoW.WarcraftLogs.TokenUrl);
             request.Headers.TryAddWithoutValidation("Authorization", $"Basic {base64Auth}");
             request.Content = new StringContent("grant_type=client_credentials", Encoding.UTF8, "application/x-www-form-urlencoded");
 
@@ -75,7 +74,7 @@ namespace dev_library.Clients
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
                 var payload = JsonConvert.SerializeObject(new { query });
-                using var request = new HttpRequestMessage(HttpMethod.Post, ApiUrl)
+                using var request = new HttpRequestMessage(HttpMethod.Post, Constants.WoW.WarcraftLogs.ApiUrl)
                 {
                     Content = new StringContent(payload, Encoding.UTF8, "application/json")
                 };

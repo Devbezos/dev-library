@@ -24,9 +24,23 @@ namespace dev_library.Data.Discord
                     Exec(conn, "DROP TABLE IF EXISTS guilds");
             }
 
+            // Migrate: add nickname column if missing
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = """
+                    SELECT COUNT(*) FROM information_schema.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE()
+                      AND TABLE_NAME   = 'guilds'
+                      AND COLUMN_NAME  = 'nickname'
+                    """;
+                if (Convert.ToInt64(cmd.ExecuteScalar()) == 0)
+                    Exec(conn, "ALTER TABLE guilds ADD COLUMN nickname VARCHAR(255) NOT NULL DEFAULT '' AFTER name");
+            }
+
             Exec(conn, """
                 CREATE TABLE IF NOT EXISTS guilds (
                     name                         VARCHAR(255) NOT NULL PRIMARY KEY,
+                    nickname                     VARCHAR(255) NOT NULL DEFAULT '',
                     feature_droptimizer          TINYINT(1)   NOT NULL DEFAULT 0,
                     feature_droptimizer_reminder TINYINT(1)   NOT NULL DEFAULT 0,
                     feature_key_audit            TINYINT(1)   NOT NULL DEFAULT 0,
@@ -191,16 +205,17 @@ namespace dev_library.Data.Discord
             cmd.Transaction = tx;
             cmd.CommandText = """
                 INSERT INTO guilds
-                    (name, feature_droptimizer, feature_droptimizer_reminder, feature_key_audit, feature_server_availability,
+                    (name, nickname, feature_droptimizer, feature_droptimizer_reminder, feature_key_audit, feature_server_availability,
                      drop_token, drop_start, drop_end,
                      google_sheet_name, google_sheet_id, google_sheet_tab, google_sheet_creds,
                      app_sheet_id, app_sheet_tab)
                 VALUES
-                    (@name, @fdrop, @fremind, @fkey, @favail,
+                    (@name, @nickname, @fdrop, @fremind, @fkey, @favail,
                      @dtoken, @dstart, @dend,
                      @gsname, @gsid, @gstab, @gscreds,
                      @asid, @astab)
                 ON DUPLICATE KEY UPDATE
+                    nickname      = @nickname,
                     feature_droptimizer          = @fdrop,  feature_droptimizer_reminder = @fremind,
                     feature_key_audit            = @fkey,   feature_server_availability  = @favail,
                     drop_token    = @dtoken, drop_start    = @dstart, drop_end    = @dend,
@@ -219,12 +234,12 @@ namespace dev_library.Data.Discord
             var kw = ignore ? "INSERT IGNORE" : "INSERT";
             cmd.CommandText = $"""
                 {kw} INTO guilds
-                    (name, feature_droptimizer, feature_droptimizer_reminder, feature_key_audit, feature_server_availability,
+                    (name, nickname, feature_droptimizer, feature_droptimizer_reminder, feature_key_audit, feature_server_availability,
                      drop_token, drop_start, drop_end,
                      google_sheet_name, google_sheet_id, google_sheet_tab, google_sheet_creds,
                      app_sheet_id, app_sheet_tab)
                 VALUES
-                    (@name, @fdrop, @fremind, @fkey, @favail,
+                    (@name, @nickname, @fdrop, @fremind, @fkey, @favail,
                      @dtoken, @dstart, @dend,
                      @gsname, @gsid, @gstab, @gscreds,
                      @asid, @astab)
@@ -277,7 +292,8 @@ namespace dev_library.Data.Discord
             var gs      = dto.GoogleSheet;
             var asSheet = dto.ApplicationSheet;
 
-            cmd.Parameters.AddWithValue("@name",    dto.Name);
+            cmd.Parameters.AddWithValue("@name",     dto.Name);
+            cmd.Parameters.AddWithValue("@nickname",  dto.Nickname ?? string.Empty);
             cmd.Parameters.AddWithValue("@fdrop",   feat.Droptimizer);
             cmd.Parameters.AddWithValue("@fremind", feat.DroptimizerReminder);
             cmd.Parameters.AddWithValue("@fkey",    feat.KeyAudit);
@@ -297,7 +313,8 @@ namespace dev_library.Data.Discord
         {
             var dto = new GuildSettingsDto
             {
-                Name = r.GetString("name"),
+                Name     = r.GetString("name"),
+                Nickname = Str(r, "nickname") ?? string.Empty,
                 Features = new GuildFeatures
                 {
                     Droptimizer         = r.GetBoolean("feature_droptimizer"),

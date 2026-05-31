@@ -11,9 +11,7 @@ namespace dev_refined.Clients
 {
     public class BattleNetClient : IBattleNetClient
     {
-        const string realmDataEndpoint = "/connected-realm/61?namespace=dynamic-us&locale=en_US";
-        const string allRealmsEndpoint = "/connected-realm/index?namespace=dynamic-us&locale=en_US";
-        const string itemNameEndpoint = "/item/{0}?namespace=static-us&locale=en_US";
+
 
         public async Task<string> GetOAuthToken()
         {
@@ -35,7 +33,7 @@ namespace dev_refined.Clients
         {
             var token = await GetOAuthToken();
             using var client = new HttpClient();
-            using var request = new HttpRequestMessage(new HttpMethod("GET"), AppSettings.BattleNet.ApiUrl + realmDataEndpoint);
+            using var request = new HttpRequestMessage(new HttpMethod("GET"), AppSettings.BattleNet.ApiUrl + Constants.WoW.BattleNet.RealmDataEndpoint);
             request.Headers.TryAddWithoutValidation("accept", "application/json");
             request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {token}");
 
@@ -48,7 +46,7 @@ namespace dev_refined.Clients
         {
             var token = await GetOAuthToken();
             using var client = new HttpClient();
-            using var request = new HttpRequestMessage(new HttpMethod("GET"), AppSettings.BattleNet.ApiUrl + allRealmsEndpoint);
+            using var request = new HttpRequestMessage(new HttpMethod("GET"), AppSettings.BattleNet.ApiUrl + Constants.WoW.BattleNet.AllRealmsEndpoint);
             request.Headers.TryAddWithoutValidation("accept", "application/json");
             request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {token}");
 
@@ -63,7 +61,7 @@ namespace dev_refined.Clients
         {
             var token = await GetOAuthToken();
             using var client = new HttpClient();
-            using var request = new HttpRequestMessage(new HttpMethod("GET"), string.Format(AppSettings.BattleNet.ApiUrl + itemNameEndpoint, itemId));
+            using var request = new HttpRequestMessage(new HttpMethod("GET"), string.Format(AppSettings.BattleNet.ApiUrl + Constants.WoW.BattleNet.ItemNameEndpoint, itemId));
             request.Headers.TryAddWithoutValidation("accept", "application/json");
             request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {token}");
 

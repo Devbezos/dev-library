@@ -12,8 +12,7 @@ namespace dev_library.Clients
 {
     public class RaidBotsClient
     {
-        private static string RaidBotsFileUrl = "https://raidbots.com/reports/{0}/data.csv";
-        private const string cacheName = "wowcache.json";
+
 
         public async Task<bool> IsValidReport(string url)
         {
@@ -69,11 +68,11 @@ namespace dev_library.Clients
             Console.WriteLine("RaidBotsClients.GetItemUpgrades: START");
 
             var bnetClient = new BattleNetClient();
-            var items = JsonConvert.DeserializeObject<List<Item>>(File.ReadAllText($"{AppSettings.BasePath}/{cacheName}"));
+            var items = JsonConvert.DeserializeObject<List<Item>>(File.ReadAllText($"{AppSettings.BasePath}/{Constants.WoW.RaidBots.CacheName}"));
             var lastUpdated = DateTime.Now;
 
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12; // TLS 1.3 is not directly supported in .NET Framework
-            var url = string.Format(RaidBotsFileUrl, reportId);
+            var url = string.Format(Constants.WoW.RaidBots.FileUrlBase, reportId);
 
             var handler = new SocketsHttpHandler
             {
@@ -143,7 +142,7 @@ namespace dev_library.Clients
                         itemName = item.Name;
                     }
 
-                    File.WriteAllText($"{AppSettings.BasePath}/{cacheName}", JsonConvert.SerializeObject(items));
+                    File.WriteAllText($"{AppSettings.BasePath}/{Constants.WoW.RaidBots.CacheName}", JsonConvert.SerializeObject(items));
                     var slot = Helpers.GetItemSlot(parts[6]);
 
                     var itemUpgrade = new ItemUpgrade(playerName, slot, difficulty, itemName, trueDpsGain, lastUpdated);

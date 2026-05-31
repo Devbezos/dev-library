@@ -7,6 +7,7 @@ namespace dev_library.Data.Discord
     public class GuildSettingsDto
     {
         public string Name { get; set; } = string.Empty;
+        public string Nickname { get; set; } = string.Empty;
         public Dictionary<string, string> Channels { get; set; } = new();
         public string[] RolesToPing { get; set; } = [];
         public GuildFeatures Features { get; set; } = new();
@@ -17,7 +18,8 @@ namespace dev_library.Data.Discord
 
         public static GuildSettingsDto From(GuildSettings g) => new()
         {
-            Name = g.Name ?? string.Empty,
+            Name     = g.Name ?? string.Empty,
+            Nickname = string.Empty,
             Channels = g.Channels?.ToDictionary(k => k.Key, v => v.Value.ToString()) ?? new(),
             RolesToPing = g.RolesToPing ?? [],
             Features = g.Features ?? new(),
