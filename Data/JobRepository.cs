@@ -21,6 +21,8 @@ namespace dev_library.Data
             (Constants.Jobs.FitnessDaily,        null, 0,  0),
             (Constants.Jobs.FitnessWeekly,       1,    0,  0),   // 1 = Monday
             (Constants.Jobs.DroptimizerReminder, 2,    17, 0),   // 2 = Tuesday
+            (Constants.Jobs.ServerAvailability,  null, 0,  0),   // runs every tick; hour/minute unused
+            (Constants.Jobs.KeyAudit,            null, 0,  0),   // timing controlled by Helpers.IsKeyAuditTime
         ];
 
         public static void EnsureTable()
@@ -84,6 +86,24 @@ namespace dev_library.Data
             cmd.CommandText = "UPDATE scheduled_jobs SET last_run = @now WHERE name = @name";
             cmd.Parameters.AddWithValue("@now", DateTime.UtcNow);
             cmd.Parameters.AddWithValue("@name", name);
+            cmd.ExecuteNonQuery();
+        }
+
+        public static void Update(ScheduledJob job)
+        {
+            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                UPDATE scheduled_jobs
+                SET enabled = @enabled, day_of_week = @dow, hour = @hour, minute = @minute
+                WHERE name = @name
+                """;
+            cmd.Parameters.AddWithValue("@name",    job.Name);
+            cmd.Parameters.AddWithValue("@enabled", job.Enabled);
+            cmd.Parameters.AddWithValue("@dow",     (object?)job.DayOfWeek ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@hour",    job.Hour);
+            cmd.Parameters.AddWithValue("@minute",  job.Minute);
             cmd.ExecuteNonQuery();
         }
 
