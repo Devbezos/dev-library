@@ -2,13 +2,16 @@ using MySqlConnector;
 
 namespace dev_library.Data.Discord
 {
-    public static class GuildRepository
+    public class GuildRepository : IGuildRepository
     {
+        private readonly string _connectionString;
+
+        public GuildRepository(string connectionString) => _connectionString = connectionString;
         // ── Schema ────────────────────────────────────────────────────────
 
-        public static void EnsureTable()
+        public void EnsureTable()
         {
-            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
 
             // Migrate: drop old JSON-blob schema if present
@@ -102,9 +105,9 @@ namespace dev_library.Data.Discord
 
         // ── Read ──────────────────────────────────────────────────────────
 
-        public static List<GuildSettingsDto> GetAll()
+        public List<GuildSettingsDto> GetAll()
         {
-            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
 
             var map = new Dictionary<string, GuildSettingsDto>(StringComparer.Ordinal);
@@ -160,9 +163,9 @@ namespace dev_library.Data.Discord
             return [.. map.Values];
         }
 
-        public static List<GuildSettingsDto> GetAllIncludingDeleted()
+        public List<GuildSettingsDto> GetAllIncludingDeleted()
         {
-            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
 
             var map = new Dictionary<string, GuildSettingsDto>(StringComparer.Ordinal);
@@ -220,9 +223,9 @@ namespace dev_library.Data.Discord
 
         // ── Write ─────────────────────────────────────────────────────────
 
-        public static void Upsert(GuildSettingsDto dto)
+        public void Upsert(GuildSettingsDto dto)
         {
-            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             using var tx = conn.BeginTransaction();
 
@@ -241,9 +244,9 @@ namespace dev_library.Data.Discord
             tx.Commit();
         }
 
-        public static void Delete(string name)
+        public void Delete(string name)
         {
-            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "UPDATE guilds SET is_deleted = 1 WHERE name = @name";
@@ -252,9 +255,9 @@ namespace dev_library.Data.Discord
         }
 
         /// Seeds guilds from appsettings. Skips guilds that already exist so the DB stays authoritative.
-        public static void SyncFromSettings(GuildSettings[] settings)
+        public void SyncFromSettings(GuildSettings[] settings)
         {
-            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             foreach (var guild in settings)
             {
@@ -266,7 +269,7 @@ namespace dev_library.Data.Discord
             }
         }
 
-        public static GuildSettings[] LoadAsGuildSettings() =>
+        public GuildSettings[] LoadAsGuildSettings() =>
             GetAll().Select(d => d.ToGuildSettings()).ToArray();
 
         // ── Helpers ───────────────────────────────────────────────────────

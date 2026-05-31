@@ -11,11 +11,14 @@ namespace dev_refined.Clients
 {
     public class BattleNetClient : IBattleNetClient
     {
+        private readonly IHttpClientFactory _httpClientFactory;
+
+        public BattleNetClient(IHttpClientFactory httpClientFactory) => _httpClientFactory = httpClientFactory;
 
 
         public async Task<string> GetOAuthToken()
         {
-            using var client = new HttpClient();
+            using var client = _httpClientFactory.CreateClient();
             using var request = new HttpRequestMessage(new HttpMethod("POST"), AppSettings.BattleNet.TokenUrl);
 
             var base64authorization = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{AppSettings.BattleNet.ClientId}:{AppSettings.BattleNet.ClientSecret}"));
@@ -33,7 +36,7 @@ namespace dev_refined.Clients
         public async Task<BlizzardRealmResponse> GetZuljinData()
         {
             var token = await GetOAuthToken();
-            using var client = new HttpClient();
+            using var client = _httpClientFactory.CreateClient();
             using var request = new HttpRequestMessage(new HttpMethod("GET"), AppSettings.BattleNet.ApiUrl + Constants.WoW.BattleNet.RealmDataEndpoint);
             request.Headers.TryAddWithoutValidation("accept", "application/json");
             request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {token}");
@@ -47,7 +50,7 @@ namespace dev_refined.Clients
         public async Task<BlizzardRealmsResponse> GetRealms()
         {
             var token = await GetOAuthToken();
-            using var client = new HttpClient();
+            using var client = _httpClientFactory.CreateClient();
             using var request = new HttpRequestMessage(new HttpMethod("GET"), AppSettings.BattleNet.ApiUrl + Constants.WoW.BattleNet.AllRealmsEndpoint);
             request.Headers.TryAddWithoutValidation("accept", "application/json");
             request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {token}");
@@ -63,7 +66,7 @@ namespace dev_refined.Clients
         public async Task<string> GetItemName(string itemId)
         {
             var token = await GetOAuthToken();
-            using var client = new HttpClient();
+            using var client = _httpClientFactory.CreateClient();
             using var request = new HttpRequestMessage(new HttpMethod("GET"), string.Format(AppSettings.BattleNet.ApiUrl + Constants.WoW.BattleNet.ItemNameEndpoint, itemId));
             request.Headers.TryAddWithoutValidation("accept", "application/json");
             request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {token}");
@@ -81,7 +84,7 @@ namespace dev_refined.Clients
 
             foreach (var realm in realmData.ConnectedRealms)
             {
-                using var client = new HttpClient();
+                using var client = _httpClientFactory.CreateClient();
                 using var request = new HttpRequestMessage(new HttpMethod("GET"), realm.Href + "/auctions?namespace=dynamic-us&locale=en_US");
                 request.Headers.TryAddWithoutValidation("accept", "application/json");
                 request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {token}");

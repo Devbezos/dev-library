@@ -10,6 +10,10 @@ namespace dev_refined.Clients
 {
     public class WoWUtilsClient : IWoWUtilsClient
     {
+        private readonly IHttpClientFactory _httpClientFactory;
+
+        public WoWUtilsClient(IHttpClientFactory httpClientFactory) => _httpClientFactory = httpClientFactory;
+
         private static readonly string[] _wowClasses =
         [
             "deathknight", "demonhunter", "druid", "evoker", "hunter",
@@ -134,9 +138,9 @@ namespace dev_refined.Clients
             return m.Success ? m.Groups[1].Value : null;
         }
 
-        private static HttpClient BuildHttpClient(string sessionCookie = null)
+        private HttpClient BuildHttpClient(string sessionCookie = null)
         {
-            var client = new HttpClient();
+            var client = _httpClientFactory.CreateClient();
             client.DefaultRequestHeaders.Add("User-Agent",
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36");
             if (!string.IsNullOrEmpty(sessionCookie))

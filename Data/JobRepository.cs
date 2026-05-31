@@ -1,4 +1,3 @@
-using dev_library.Data.Discord;
 using MySqlConnector;
 
 namespace dev_library.Data
@@ -13,8 +12,12 @@ namespace dev_library.Data
         public DateTime? LastRun { get; set; } // stored/compared as UTC
     }
 
-    public static class JobRepository
+    public class JobRepository : IJobRepository
     {
+        private readonly string _connectionString;
+
+        public JobRepository(string connectionString) => _connectionString = connectionString;
+
         // Seed rows — INSERT IGNORE, so existing rows (user-edited) are preserved
         private static readonly (string Name, int? DayOfWeek, int Hour, int Minute)[] _defaults =
         [
@@ -25,9 +28,9 @@ namespace dev_library.Data
             (Constants.Jobs.KeyAudit,            null, 0,  0),   // timing controlled by Helpers.IsKeyAuditTime
         ];
 
-        public static void EnsureTable()
+        public void EnsureTable()
         {
-            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
@@ -63,9 +66,9 @@ namespace dev_library.Data
             migrate.ExecuteNonQuery();
         }
 
-        public static List<ScheduledJob> GetAll()
+        public List<ScheduledJob> GetAll()
         {
-            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT name, enabled, day_of_week, hour, minute, last_run FROM scheduled_jobs";
@@ -84,9 +87,9 @@ namespace dev_library.Data
             return result;
         }
 
-        public static void MarkRan(string name)
+        public void MarkRan(string name)
         {
-            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "UPDATE scheduled_jobs SET last_run = @now WHERE name = @name";
@@ -95,9 +98,9 @@ namespace dev_library.Data
             cmd.ExecuteNonQuery();
         }
 
-        public static void ResetLastRun(string name)
+        public void ResetLastRun(string name)
         {
-            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "UPDATE scheduled_jobs SET last_run = NULL WHERE name = @name";
@@ -105,9 +108,9 @@ namespace dev_library.Data
             cmd.ExecuteNonQuery();
         }
 
-        public static void Update(ScheduledJob job)
+        public void Update(ScheduledJob job)
         {
-            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
@@ -124,7 +127,7 @@ namespace dev_library.Data
         }
 
         // now = local/zoned time used for day-of-week / hour / minute matching
-        public static bool ShouldRun(ScheduledJob job, DateTime now) =>
+        public bool ShouldRun(ScheduledJob job, DateTime now) =>
             job.Enabled &&
             (job.DayOfWeek == null || job.DayOfWeek == (int)now.DayOfWeek) &&
             job.Hour   == now.Hour &&
@@ -132,7 +135,7 @@ namespace dev_library.Data
             (job.LastRun == null || (DateTime.UtcNow - job.LastRun.Value).TotalMinutes >= 1);
 
         // True if the job is enabled, the configured hour:minute matches now, and has not yet run today (Eastern date).
-        public static bool ShouldRunToday(ScheduledJob job, DateTime nowEastern, TimeZoneInfo tz)
+        public bool ShouldRunToday(ScheduledJob job, DateTime nowEastern, TimeZoneInfo tz)
         {
             if (!job.Enabled) return false;
             if (job.Hour != nowEastern.Hour || job.Minute != nowEastern.Minute) return false;
@@ -143,7 +146,7 @@ namespace dev_library.Data
         }
 
         // True if the job is enabled, configured hour:minute matches, today matches the configured day-of-week, and has not yet run this week.
-        public static bool ShouldRunThisWeek(ScheduledJob job, DateTime nowEastern, TimeZoneInfo tz)
+        public bool ShouldRunThisWeek(ScheduledJob job, DateTime nowEastern, TimeZoneInfo tz)
         {
             if (!job.Enabled) return false;
 

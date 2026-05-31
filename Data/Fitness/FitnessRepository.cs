@@ -10,11 +10,14 @@ namespace dev_library.Data.Fitness
         public bool   Enabled   { get; set; }
     }
 
-    public static class FitnessRepository
+    public class FitnessRepository : IFitnessRepository
     {
-        public static void EnsureTable()
+        private readonly string _connectionString;
+
+        public FitnessRepository(string connectionString) => _connectionString = connectionString;
+        public void EnsureTable()
         {
-            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
 
@@ -66,9 +69,9 @@ namespace dev_library.Data.Fitness
             }
         }
 
-        public static void LogPost(string username, string postType)
+        public void LogPost(string username, string postType)
         {
-            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "INSERT INTO fitness_posts (username, post_type, posted_at) VALUES (@username, @postType, @postedAt)";
@@ -82,10 +85,10 @@ namespace dev_library.Data.Fitness
         /// Seeds fitness_users from appsettings GoogleHealth config (one-time migration).
         /// Credentials are only written to rows that currently have empty credentials.
         /// </summary>
-        public static void EnsureUsersTable(GoogleHealthUserSettings[] users)
+        public void EnsureUsersTable(GoogleHealthUserSettings[] users)
         {
             if (users.Length == 0) return;
-            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             foreach (var user in users)
             {
@@ -107,9 +110,9 @@ namespace dev_library.Data.Fitness
             }
         }
 
-        public static GoogleHealthUserSettings[] GetGoogleHealthSettings()
+        public GoogleHealthUserSettings[] GetGoogleHealthSettings()
         {
-            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT username, channel_id, enabled, client_id, client_secret, refresh_token, highest_weight_lbs FROM fitness_users WHERE is_deleted = 0 ORDER BY username";
@@ -129,9 +132,9 @@ namespace dev_library.Data.Fitness
             return [.. result];
         }
 
-        public static GoogleHealthUserSettings[] GetGoogleHealthSettingsAll()
+        public GoogleHealthUserSettings[] GetGoogleHealthSettingsAll()
         {
-            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT username, channel_id, enabled, client_id, client_secret, refresh_token, is_deleted, highest_weight_lbs FROM fitness_users ORDER BY username";
@@ -152,10 +155,10 @@ namespace dev_library.Data.Fitness
             return [.. result];
         }
 
-        public static void UpsertFitnessUser(string username, ulong channelId, bool enabled,
+        public void UpsertFitnessUser(string username, ulong channelId, bool enabled,
             string clientId, string clientSecret, string refreshToken, double? highestWeightLbs = null)
         {
-            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
@@ -180,9 +183,9 @@ namespace dev_library.Data.Fitness
             cmd.ExecuteNonQuery();
         }
 
-        public static List<FitnessUser> GetUsers()
+        public List<FitnessUser> GetUsers()
         {
-            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT username, channel_id, enabled FROM fitness_users WHERE enabled = 1 AND is_deleted = 0";
@@ -198,9 +201,9 @@ namespace dev_library.Data.Fitness
             return result;
         }
 
-        public static List<FitnessUser> GetAllUsers()
+        public List<FitnessUser> GetAllUsers()
         {
-            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT username, channel_id, enabled FROM fitness_users WHERE is_deleted = 0 ORDER BY username";
@@ -216,9 +219,9 @@ namespace dev_library.Data.Fitness
             return result;
         }
 
-        public static void UpdateUser(string username, ulong channelId, bool enabled)
+        public void UpdateUser(string username, ulong channelId, bool enabled)
         {
-            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
@@ -232,9 +235,9 @@ namespace dev_library.Data.Fitness
             cmd.ExecuteNonQuery();
         }
 
-        public static List<FitnessPost> GetRecentPosts(int limit = 50)
+        public List<FitnessPost> GetRecentPosts(int limit = 50)
         {
-            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT id, username, post_type, posted_at FROM fitness_posts ORDER BY posted_at DESC LIMIT @limit";
@@ -252,9 +255,9 @@ namespace dev_library.Data.Fitness
             return result;
         }
 
-        public static void DeletePost(int id)
+        public void DeletePost(int id)
         {
-            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "DELETE FROM fitness_posts WHERE id = @id";
@@ -262,9 +265,9 @@ namespace dev_library.Data.Fitness
             cmd.ExecuteNonQuery();
         }
 
-        public static void DeleteUser(string username)
+        public void DeleteUser(string username)
         {
-            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "UPDATE fitness_users SET is_deleted = 1 WHERE username = @username";
@@ -272,9 +275,9 @@ namespace dev_library.Data.Fitness
             cmd.ExecuteNonQuery();
         }
 
-        public static void UpdateRefreshToken(string username, string refreshToken)
+        public void UpdateRefreshToken(string username, string refreshToken)
         {
-            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "UPDATE fitness_users SET refresh_token = @refreshToken WHERE username = @username";

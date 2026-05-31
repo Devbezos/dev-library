@@ -11,12 +11,15 @@ namespace dev_refined.Clients
 {
     public class WoWAuditClient : IWoWAuditClient
     {
+        private readonly IHttpClientFactory _httpClientFactory;
+
+        public WoWAuditClient(IHttpClientFactory httpClientFactory) => _httpClientFactory = httpClientFactory;
         public async Task<List<WoWAuditCharacter>> GetCharacters(string guild)
         {
             Log.Information("WoWAuditClient.GetCharacters: START {Guild}", guild);
             try
             {
-                using var client = new HttpClient();
+                using var client = _httpClientFactory.CreateClient();
                 using var request = new HttpRequestMessage(new HttpMethod("GET"), $"{Constants.WoW.WoWAudit.Url}/characters");
 
                 request.Headers.TryAddWithoutValidation("accept", "application/json");
@@ -44,7 +47,7 @@ namespace dev_refined.Clients
             Log.Information("WoWAuditClient.UpdateWishlist: START");
             try
             {
-                using var client = new HttpClient();
+                using var client = _httpClientFactory.CreateClient();
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", AppSettings.Guilds.First(g => g.Name == guild.ToUpper()).Droptimizer.Token);
                 var requestBody = new StringContent(JsonConvert.SerializeObject(new WoWAuditWishlistRequest(reportId)), Encoding.UTF8, ContentType.Json);
                 using var httpResponse = await client.PostAsync($"{Constants.WoW.WoWAudit.Url}/wishlists", requestBody);

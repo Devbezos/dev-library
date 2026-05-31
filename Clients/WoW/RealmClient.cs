@@ -10,8 +10,6 @@ namespace dev_refined
         private readonly IDiscordClient _discordClient;
         private readonly IBattleNetClient _battleNetClient;
 
-        public RealmClient() : this(new DiscordClient(), new BattleNetClient()) { }
-
         public RealmClient(IDiscordClient discordClient, IBattleNetClient battleNetClient)
         {
             _discordClient = discordClient;

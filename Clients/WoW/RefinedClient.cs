@@ -11,8 +11,6 @@ namespace dev_refined
         private readonly IRaiderIoClient _raiderIoClient;
         private readonly IDiscordClient _discordClient;
 
-        public RefinedClient() : this(new WoWAuditClient(), new RaiderIoClient(), new DiscordClient()) { }
-
         public RefinedClient(IWoWAuditClient wowAuditClient, IRaiderIoClient raiderIoClient, IDiscordClient discordClient)
         {
             _wowAuditClient = wowAuditClient;

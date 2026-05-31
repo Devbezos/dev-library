@@ -13,16 +13,19 @@ namespace dev_library.Clients.Fitness
     {
         private readonly ICustomDiscordClient _discordClient;
         private readonly GoogleHealthUserSettings _settings;
+        private readonly IFitnessRepository? _fitnessRepository;
 
         private string? _accessToken;
         private DateTime _tokenExpiry = DateTime.MinValue;
 
-        public GoogleHealthClient(GoogleHealthUserSettings settings) : this(settings, new DiscordClient()) { }
+        public GoogleHealthClient(GoogleHealthUserSettings settings) : this(settings, new DiscordClient(), null) { }
+        public GoogleHealthClient(GoogleHealthUserSettings settings, IFitnessRepository fitnessRepository) : this(settings, new DiscordClient(), fitnessRepository) { }
 
-        public GoogleHealthClient(GoogleHealthUserSettings settings, ICustomDiscordClient discordClient)
+        public GoogleHealthClient(GoogleHealthUserSettings settings, ICustomDiscordClient discordClient, IFitnessRepository? fitnessRepository = null)
         {
             _settings = settings;
             _discordClient = discordClient;
+            _fitnessRepository = fitnessRepository;
         }
 
         private async Task<string> GetAccessToken()
@@ -339,7 +342,7 @@ namespace dev_library.Clients.Fitness
             await Task.WhenAll(exercisesTask, stepsTask, sleepTask, weightTask, hrTask);
             var weeklyEmbed = BuildWeeklyEmbed(_settings.Username, exercisesTask.Result, stepsTask.Result, sleepTask.Result, weightTask.Result, hrTask.Result, _settings.HighestWeightLbs);
             await _discordClient.PostEmbed(_settings.ChannelId, weeklyEmbed);
-            FitnessRepository.LogPost(_settings.Username, "weekly");
+            _fitnessRepository?.LogPost(_settings.Username, "weekly");
             Log.Information("GoogleHealthClient.PostWeeklyFitnessStats: END");
         }
 
@@ -355,7 +358,7 @@ namespace dev_library.Clients.Fitness
 
             var dailyEmbed = BuildDailyEmbed(_settings.Username, exercisesTask.Result, stepsTask.Result, sleepTask.Result, hrTask.Result);
             await _discordClient.PostEmbed(_settings.ChannelId, dailyEmbed);
-            FitnessRepository.LogPost(_settings.Username, "daily");
+            _fitnessRepository?.LogPost(_settings.Username, "daily");
             Log.Information("GoogleHealthClient.PostDailyFitnessStats: END");
         }
 

@@ -4,7 +4,7 @@ using dev_library.Data.WoW.Raidbots;
 using dev_refined;
 using dev_refined.Clients;
 using Newtonsoft.Json;
-using System.Net;
+using Serilog;
 using System.Net.Security;
 using System.Security.Authentication;
 
@@ -12,25 +12,23 @@ namespace dev_library.Clients
 {
     public class RaidBotsClient
     {
+        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly IBattleNetClient _battleNetClient;
+
+        public RaidBotsClient(IHttpClientFactory httpClientFactory, IBattleNetClient battleNetClient)
+        {
+            _httpClientFactory = httpClientFactory;
+            _battleNetClient = battleNetClient;
+        }
 
 
         public async Task<bool> IsValidReport(string url)
         {
-            Console.WriteLine("RaidBotsClients.IsValidReport: START");
-
-            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12; // TLS 1.3 is not directly supported in .NET Framework
-
-            var handler = new SocketsHttpHandler
-            {
-                SslOptions = new SslClientAuthenticationOptions
-                {
-                    EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13
-                }
-            };
+            Log.Information("RaidBotsClient.IsValidReport: START");
 
             var content = string.Empty;
 
-            using (var httpClient = new HttpClient(handler))
+            using (var httpClient = _httpClientFactory.CreateClient("raidbots"))
             {
                 try
                 {
@@ -41,16 +39,15 @@ namespace dev_library.Clients
                     if (response.IsSuccessStatusCode)
                     {
                         content = await response.Content.ReadAsStringAsync();
-                        // Console.WriteLine(content);
                     }
                     else
                     {
-                        Console.WriteLine($"Error: {response.StatusCode}");
+                        Log.Warning("RaidBotsClient.IsValidReport: HTTP {StatusCode}", response.StatusCode);
                     }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Exception: {ex.Message}");
+                    Log.Error(ex, "RaidBotsClient.IsValidReport: exception");
                 }
             }
 
@@ -59,32 +56,21 @@ namespace dev_library.Clients
                 return true;
             }
 
-            Console.WriteLine("RaidBotsClients.IsValidReport: END");
+            Log.Information("RaidBotsClient.IsValidReport: END");
             return false;
         }
 
         public async Task<List<ItemUpgrade>> GetItemUpgrades(List<ItemUpgrade> itemUpgrades, string reportId)
         {
-            Console.WriteLine("RaidBotsClients.GetItemUpgrades: START");
+            Log.Information("RaidBotsClient.GetItemUpgrades: START");
 
-            var bnetClient = new BattleNetClient();
             var items = JsonConvert.DeserializeObject<List<Item>>(File.ReadAllText($"{AppSettings.BasePath}/{Constants.WoW.RaidBots.CacheName}"));
             var lastUpdated = DateTime.Now;
 
-            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12; // TLS 1.3 is not directly supported in .NET Framework
             var url = string.Format(Constants.WoW.RaidBots.FileUrlBase, reportId);
-
-            var handler = new SocketsHttpHandler
-            {
-                SslOptions = new SslClientAuthenticationOptions
-                {
-                    EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13
-                }
-            };
-
             var content = string.Empty;
 
-            using (var httpClient = new HttpClient(handler))
+            using (var httpClient = _httpClientFactory.CreateClient("raidbots"))
             {
                 try
                 {
@@ -95,16 +81,16 @@ namespace dev_library.Clients
                     if (response.IsSuccessStatusCode)
                     {
                         content = await response.Content.ReadAsStringAsync();
-                        // Console.WriteLine(content);
+                        // Log.Debug(content);
                     }
                     else
                     {
-                        Console.WriteLine($"Error: {response.StatusCode}");
+                        Log.Warning("RaidBotsClient.GetItemUpgrades: HTTP {StatusCode}", response.StatusCode);
                     }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Exception: {ex.Message}");
+                    Log.Error(ex, "RaidBotsClient.GetItemUpgrades: exception");
                 }
             }
 
@@ -134,7 +120,7 @@ namespace dev_library.Clients
 
                     if (item == null)
                     {
-                        itemName = await bnetClient.GetItemName(parts[3]);
+                        itemName = await _battleNetClient.GetItemName(parts[3]);
                         items.Add(new Item(itemName, parts[3]));
                     }
                     else
@@ -162,7 +148,7 @@ namespace dev_library.Clients
                 }
             }
 
-            Console.WriteLine("RaidBotsClients.GetItemUpgrades: END");
+            Log.Information("RaidBotsClient.GetItemUpgrades: END");
 
             return itemUpgrades;
         }

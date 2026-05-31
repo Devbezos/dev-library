@@ -1,5 +1,3 @@
-using dev_library.Data;
-using dev_library.Data.Fitness;
 using MySqlConnector;
 
 namespace dev_library.Data.Discord
@@ -8,13 +6,15 @@ namespace dev_library.Data.Discord
 
     public record TrackedApplication(ulong MessageId, ulong ChannelId, ulong ArchiveCategoryId, ulong[] DenyUserIds, string GuildName, string ChannelName = "");
 
-    public static class SqlClient
+    public class SqlClient : IAppChannelRepository
     {
-        public static string ConnectionString { get; set; } = "Server=localhost;Port=3306;Database=dev_bot;Uid=root;Pwd=;";
+        private readonly string _connectionString;
 
-        public static void EnsureTable()
+        public SqlClient(string connectionString) => _connectionString = connectionString;
+
+        public void EnsureTable()
         {
-            var builder = new MySqlConnectionStringBuilder(ConnectionString);
+            var builder = new MySqlConnectionStringBuilder(_connectionString);
             var dbName = builder.Database;
             builder.Database = string.Empty;
 
@@ -24,7 +24,7 @@ namespace dev_library.Data.Discord
             createDb.CommandText = $"CREATE DATABASE IF NOT EXISTS `{dbName}`";
             createDb.ExecuteNonQuery();
 
-            using var conn = new MySqlConnection(ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
@@ -70,15 +70,11 @@ namespace dev_library.Data.Discord
                 }
             }
 
-            GuildRepository.EnsureTable();
-            FitnessRepository.EnsureTable();
-            FitnessRepository.EnsureUsersTable(AppSettings.GoogleHealth);
-            JobRepository.EnsureTable();
         }
 
-        public static List<AppChannelEntry> Load()
+        public List<AppChannelEntry> Load()
         {
-            using var conn = new MySqlConnection(ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT channel_id, guild_name, channel_name FROM app_channels WHERE is_deleted = 0";
@@ -89,9 +85,9 @@ namespace dev_library.Data.Discord
             return result;
         }
 
-        public static List<AppChannelEntry> LoadAllIncludingDeleted()
+        public List<AppChannelEntry> LoadAllIncludingDeleted()
         {
-            using var conn = new MySqlConnection(ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT channel_id, guild_name, channel_name, is_deleted FROM app_channels";
@@ -106,9 +102,9 @@ namespace dev_library.Data.Discord
             return result;
         }
 
-        public static void Add(string guildName, ulong channelId, string channelName = "")
+        public void Add(string guildName, ulong channelId, string channelName = "")
         {
-            using var conn = new MySqlConnection(ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
@@ -121,9 +117,9 @@ namespace dev_library.Data.Discord
             cmd.ExecuteNonQuery();
         }
 
-        public static void Remove(ulong channelId)
+        public void Remove(ulong channelId)
         {
-            using var conn = new MySqlConnection(ConnectionString);
+            using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "UPDATE app_channels SET is_deleted = 1 WHERE channel_id = @channelId";
