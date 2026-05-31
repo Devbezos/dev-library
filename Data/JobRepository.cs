@@ -19,7 +19,7 @@ namespace dev_library.Data
         private static readonly (string Name, int? DayOfWeek, int Hour, int Minute)[] _defaults =
         [
             (Constants.Jobs.FitnessDaily,        null, 0,  0),
-            (Constants.Jobs.FitnessWeekly,       1,    0,  0),   // 1 = Monday
+            (Constants.Jobs.FitnessWeekly,       0,    0,  0),   // 0 = Sunday
             (Constants.Jobs.DroptimizerReminder, 2,    17, 0),   // 2 = Tuesday
             (Constants.Jobs.ServerAvailability,  null, 0,  0),   // runs every tick; hour/minute unused
             (Constants.Jobs.KeyAudit,            null, 0,  0),   // timing controlled by Helpers.IsKeyAuditTime
@@ -55,6 +55,12 @@ namespace dev_library.Data
                 seed.Parameters.AddWithValue("@minute", minute);
                 seed.ExecuteNonQuery();
             }
+
+            // Migration: FitnessWeekly was seeded as Monday (1), update to Sunday (0)
+            using var migrate = conn.CreateCommand();
+            migrate.CommandText = "UPDATE scheduled_jobs SET day_of_week = 0 WHERE name = @name AND day_of_week = 1";
+            migrate.Parameters.AddWithValue("@name", Constants.Jobs.FitnessWeekly);
+            migrate.ExecuteNonQuery();
         }
 
         public static List<ScheduledJob> GetAll()
@@ -125,25 +131,33 @@ namespace dev_library.Data
             job.Minute == now.Minute &&
             (job.LastRun == null || (DateTime.UtcNow - job.LastRun.Value).TotalMinutes >= 1);
 
-        // True if the job is enabled and has not yet run today (Eastern date).
+        // True if the job is enabled, the configured hour:minute matches now, and has not yet run today (Eastern date).
         public static bool ShouldRunToday(ScheduledJob job, DateTime nowEastern, TimeZoneInfo tz)
         {
             if (!job.Enabled) return false;
+            if (job.Hour != nowEastern.Hour || job.Minute != nowEastern.Minute) return false;
             if (job.LastRun == null) return true;
             var lastRunEastern = TimeZoneInfo.ConvertTime(
                 DateTime.SpecifyKind(job.LastRun.Value, DateTimeKind.Utc), tz);
             return lastRunEastern.Date < nowEastern.Date;
         }
 
-        // True if the job is enabled and has not yet run this week (since Monday, Eastern).
+        // True if the job is enabled, configured hour:minute matches, today matches the configured day-of-week, and has not yet run this week.
         public static bool ShouldRunThisWeek(ScheduledJob job, DateTime nowEastern, TimeZoneInfo tz)
         {
             if (!job.Enabled) return false;
+            if (job.Hour != nowEastern.Hour || job.Minute != nowEastern.Minute) return false;
+
+            // Only fire on the configured day (default Sunday)
+            var weekDay = job.DayOfWeek ?? (int)DayOfWeek.Sunday;
+            if ((int)nowEastern.DayOfWeek != weekDay) return false;
+
             if (job.LastRun == null) return true;
             var lastRunEastern = TimeZoneInfo.ConvertTime(
                 DateTime.SpecifyKind(job.LastRun.Value, DateTimeKind.Utc), tz);
-            var daysToMonday = ((int)nowEastern.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
-            var weekStart = nowEastern.Date.AddDays(-daysToMonday);
+            // Week boundary = most recent occurrence of the configured day
+            var daysToWeekStart = ((int)nowEastern.DayOfWeek - weekDay + 7) % 7;
+            var weekStart = nowEastern.Date.AddDays(-daysToWeekStart);
             return lastRunEastern.Date < weekStart;
         }
     }

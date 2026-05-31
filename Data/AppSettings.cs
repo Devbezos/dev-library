@@ -141,5 +141,6 @@ namespace dev_library.Data
         public ulong ChannelId { get; set; }
         public bool Enabled { get; set; } = true;
         public bool IsDeleted { get; set; } = false;
+        public double? HighestWeightLbs { get; set; }
     }
 }

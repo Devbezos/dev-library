@@ -360,6 +360,118 @@ namespace dev_library.Data.Fitness
         public DateOnly ToDateOnly() => new DateOnly(Year, Month, Day);
     }
 
+    public class GoogleHealthNutritionResponse
+    {
+        [JsonProperty("dataPoints")]
+        public List<GoogleHealthNutritionDataPoint> DataPoints { get; set; } = new();
+
+        [JsonProperty("nextPageToken")]
+        public string? NextPageToken { get; set; }
+    }
+
+    public class GoogleHealthNutritionDataPoint
+    {
+        [JsonProperty("name")]
+        public string Name { get; set; } = string.Empty;
+
+        [JsonProperty("dataSource")]
+        public GoogleHealthDataSource DataSource { get; set; } = new();
+
+        [JsonProperty("nutritionLog")]
+        public GoogleHealthNutritionEntry Nutrition { get; set; } = new();
+    }
+
+    public class GoogleHealthNutritionEntry
+    {
+        [JsonProperty("interval")]
+        public GoogleHealthInterval Interval { get; set; } = new();
+
+        [JsonProperty("mealType")]
+        public string MealType { get; set; } = string.Empty;
+
+        [JsonProperty("foodDisplayName")]
+        public string? FoodDisplayName { get; set; }
+
+        // Calories come from the energy field (kcal), not the nutrients array
+        [JsonProperty("energy")]
+        public GoogleHealthEnergyQuantity? Energy { get; set; }
+
+        [JsonProperty("totalCarbohydrate")]
+        public GoogleHealthWeightQuantity? TotalCarbohydrate { get; set; }
+
+        [JsonProperty("totalFat")]
+        public GoogleHealthWeightQuantity? TotalFat { get; set; }
+
+        // API returns nutrients as an array of {nutrient, quantity.grams} objects
+        [JsonProperty("nutrients")]
+        public List<GoogleHealthNutrientQuantity> NutrientList { get; set; } = new();
+
+        [JsonIgnore]
+        public GoogleHealthNutrients Nutrients => new GoogleHealthNutrients(this);
+    }
+
+    public class GoogleHealthEnergyQuantity
+    {
+        [JsonProperty("kcal")]
+        public double Kcal { get; set; }
+    }
+
+    public class GoogleHealthWeightQuantity
+    {
+        [JsonProperty("grams")]
+        public double Grams { get; set; }
+    }
+
+    public class GoogleHealthNutrientQuantity
+    {
+        [JsonProperty("nutrient")]
+        public string Nutrient { get; set; } = string.Empty;
+
+        [JsonProperty("quantity")]
+        public GoogleHealthWeightQuantity? Quantity { get; set; }
+    }
+
+    public class GoogleHealthNutrients
+    {
+        private readonly GoogleHealthNutritionEntry _entry;
+
+        public GoogleHealthNutrients(GoogleHealthNutritionEntry entry) => _entry = entry;
+
+        private double? FromList(string name) =>
+            _entry.NutrientList.FirstOrDefault(n => n.Nutrient == name)?.Quantity?.Grams;
+
+        public double? Calories           => _entry.Energy?.Kcal;
+        public double? ProteinG           => FromList("PROTEIN");
+        public double? TotalCarbohydrateG => _entry.TotalCarbohydrate?.Grams ?? FromList("CARBOHYDRATES");
+        public double? TotalFatG          => _entry.TotalFat?.Grams ?? FromList("TOTAL_FAT");
+        public double? DietaryFiberG      => FromList("DIETARY_FIBER");
+        public double? SugarG             => FromList("SUGAR");
+    }
+
+    public class FitnessActivityEntry
+    {
+        public string Name { get; set; } = string.Empty;
+        public int Minutes { get; set; }
+    }
+
+    public class DailyFitnessSnapshot
+    {
+        public double? SleepHours { get; set; }
+        public long Steps { get; set; }
+        public int? RestingHrBpm { get; set; }
+        public List<FitnessActivityEntry> Activities { get; set; } = new();
+    }
+
+    public class WeeklyFitnessSnapshot
+    {
+        public double? AvgSleepHours { get; set; }
+        public long AvgStepsPerDay { get; set; }
+        public double? AvgRestingHrBpm { get; set; }
+        public double? WeightDeltaLbs { get; set; }
+        public int TotalActivityMinutes { get; set; }
+        public List<FitnessActivityEntry> Activities { get; set; } = new();
+    }
+
     public class GoogleHealthTokenResponse
     {
         [JsonProperty("access_token")]

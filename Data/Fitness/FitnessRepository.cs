@@ -45,10 +45,11 @@ namespace dev_library.Data.Fitness
             // Migration: add credential columns to existing tables that predate this change
             foreach (var (col, def) in new[]
             {
-                ("client_id",     "VARCHAR(255)  NOT NULL DEFAULT ''"),
-                ("client_secret", "VARCHAR(255)  NOT NULL DEFAULT ''"),
-                ("refresh_token", "VARCHAR(2048) NOT NULL DEFAULT ''"),
-                ("is_deleted",    "TINYINT(1)    NOT NULL DEFAULT 0"),
+                ("client_id",          "VARCHAR(255)   NOT NULL DEFAULT ''"),
+                ("client_secret",      "VARCHAR(255)   NOT NULL DEFAULT ''"),
+                ("refresh_token",      "VARCHAR(2048)  NOT NULL DEFAULT ''"),
+                ("is_deleted",         "TINYINT(1)     NOT NULL DEFAULT 0"),
+                ("highest_weight_lbs", "DECIMAL(6,2)   NULL"),
             })
             {
                 cmd.CommandText = $"""
@@ -111,18 +112,19 @@ namespace dev_library.Data.Fitness
             using var conn = new MySqlConnection(SqlClient.ConnectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT username, channel_id, enabled, client_id, client_secret, refresh_token FROM fitness_users WHERE is_deleted = 0 ORDER BY username";
+            cmd.CommandText = "SELECT username, channel_id, enabled, client_id, client_secret, refresh_token, highest_weight_lbs FROM fitness_users WHERE is_deleted = 0 ORDER BY username";
             using var reader = cmd.ExecuteReader();
             var result = new List<GoogleHealthUserSettings>();
             while (reader.Read())
                 result.Add(new GoogleHealthUserSettings
                 {
-                    Username     = reader.GetString("username"),
-                    ChannelId    = reader.GetUInt64("channel_id"),
-                    Enabled      = reader.GetBoolean("enabled"),
-                    ClientId     = reader.GetString("client_id"),
-                    ClientSecret = reader.GetString("client_secret"),
-                    RefreshToken = reader.GetString("refresh_token"),
+                    Username        = reader.GetString("username"),
+                    ChannelId       = reader.GetUInt64("channel_id"),
+                    Enabled         = reader.GetBoolean("enabled"),
+                    ClientId        = reader.GetString("client_id"),
+                    ClientSecret    = reader.GetString("client_secret"),
+                    RefreshToken    = reader.GetString("refresh_token"),
+                    HighestWeightLbs = reader.IsDBNull(reader.GetOrdinal("highest_weight_lbs")) ? null : reader.GetDouble("highest_weight_lbs"),
                 });
             return [.. result];
         }
@@ -132,46 +134,49 @@ namespace dev_library.Data.Fitness
             using var conn = new MySqlConnection(SqlClient.ConnectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT username, channel_id, enabled, client_id, client_secret, refresh_token, is_deleted FROM fitness_users ORDER BY username";
+            cmd.CommandText = "SELECT username, channel_id, enabled, client_id, client_secret, refresh_token, is_deleted, highest_weight_lbs FROM fitness_users ORDER BY username";
             using var reader = cmd.ExecuteReader();
             var result = new List<GoogleHealthUserSettings>();
             while (reader.Read())
                 result.Add(new GoogleHealthUserSettings
                 {
-                    Username     = reader.GetString("username"),
-                    ChannelId    = reader.GetUInt64("channel_id"),
-                    Enabled      = reader.GetBoolean("enabled"),
-                    ClientId     = reader.GetString("client_id"),
-                    ClientSecret = reader.GetString("client_secret"),
-                    RefreshToken = reader.GetString("refresh_token"),
-                    IsDeleted    = reader.GetBoolean("is_deleted"),
+                    Username         = reader.GetString("username"),
+                    ChannelId        = reader.GetUInt64("channel_id"),
+                    Enabled          = reader.GetBoolean("enabled"),
+                    ClientId         = reader.GetString("client_id"),
+                    ClientSecret     = reader.GetString("client_secret"),
+                    RefreshToken     = reader.GetString("refresh_token"),
+                    IsDeleted        = reader.GetBoolean("is_deleted"),
+                    HighestWeightLbs = reader.IsDBNull(reader.GetOrdinal("highest_weight_lbs")) ? null : reader.GetDouble("highest_weight_lbs"),
                 });
             return [.. result];
         }
 
         public static void UpsertFitnessUser(string username, ulong channelId, bool enabled,
-            string clientId, string clientSecret, string refreshToken)
+            string clientId, string clientSecret, string refreshToken, double? highestWeightLbs = null)
         {
             using var conn = new MySqlConnection(SqlClient.ConnectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
-                INSERT INTO fitness_users (username, channel_id, enabled, client_id, client_secret, refresh_token)
-                VALUES (@username, @channelId, @enabled, @clientId, @clientSecret, @refreshToken)
+                INSERT INTO fitness_users (username, channel_id, enabled, client_id, client_secret, refresh_token, highest_weight_lbs)
+                VALUES (@username, @channelId, @enabled, @clientId, @clientSecret, @refreshToken, @highestWeightLbs)
                 ON DUPLICATE KEY UPDATE
-                    channel_id    = @channelId,
-                    enabled       = @enabled,
-                    client_id     = @clientId,
-                    client_secret = @clientSecret,
-                    refresh_token = @refreshToken,
-                    is_deleted    = 0
+                    channel_id         = @channelId,
+                    enabled            = @enabled,
+                    client_id          = @clientId,
+                    client_secret      = @clientSecret,
+                    refresh_token      = @refreshToken,
+                    highest_weight_lbs = @highestWeightLbs,
+                    is_deleted         = 0
                 """;
-            cmd.Parameters.AddWithValue("@username",     username);
-            cmd.Parameters.AddWithValue("@channelId",    channelId);
-            cmd.Parameters.AddWithValue("@enabled",      enabled);
-            cmd.Parameters.AddWithValue("@clientId",     clientId);
-            cmd.Parameters.AddWithValue("@clientSecret", clientSecret);
-            cmd.Parameters.AddWithValue("@refreshToken", refreshToken);
+            cmd.Parameters.AddWithValue("@username",         username);
+            cmd.Parameters.AddWithValue("@channelId",        channelId);
+            cmd.Parameters.AddWithValue("@enabled",          enabled);
+            cmd.Parameters.AddWithValue("@clientId",         clientId);
+            cmd.Parameters.AddWithValue("@clientSecret",     clientSecret);
+            cmd.Parameters.AddWithValue("@refreshToken",     refreshToken);
+            cmd.Parameters.AddWithValue("@highestWeightLbs", (object?)highestWeightLbs ?? DBNull.Value);
             cmd.ExecuteNonQuery();
         }
 
@@ -264,6 +269,17 @@ namespace dev_library.Data.Fitness
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "UPDATE fitness_users SET is_deleted = 1 WHERE username = @username";
             cmd.Parameters.AddWithValue("@username", username);
+            cmd.ExecuteNonQuery();
+        }
+
+        public static void UpdateRefreshToken(string username, string refreshToken)
+        {
+            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "UPDATE fitness_users SET refresh_token = @refreshToken WHERE username = @username";
+            cmd.Parameters.AddWithValue("@username", username);
+            cmd.Parameters.AddWithValue("@refreshToken", refreshToken);
             cmd.ExecuteNonQuery();
         }
     }

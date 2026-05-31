@@ -217,6 +217,111 @@ namespace dev_library.Clients.Fitness
                 .ToList() ?? new List<GoogleHealthSleepDataPoint>();
         }
 
+        public async Task<List<GoogleHealthNutritionDataPoint>> GetDayNutrition(DateOnly date)
+        {
+            var start = date.ToString("yyyy-MM-dd") + "T00:00:00";
+            var end   = date.AddDays(1).ToString("yyyy-MM-dd") + "T00:00:00";
+            var result = await FetchDataType<GoogleHealthNutritionResponse>("nutrition-log",
+                $"nutrition_log.interval.civil_start_time >= \"{start}\" AND nutrition_log.interval.civil_start_time < \"{end}\"");
+            return result?.DataPoints ?? new List<GoogleHealthNutritionDataPoint>();
+        }
+
+        public async Task<string?> GetDayNutritionRaw(DateOnly date)
+        {
+            var start = date.ToString("yyyy-MM-dd") + "T00:00:00";
+            var end   = date.AddDays(1).ToString("yyyy-MM-dd") + "T00:00:00";
+            return await FetchRaw("nutrition-log",
+                $"nutrition_log.interval.civil_start_time >= \"{start}\" AND nutrition_log.interval.civil_start_time < \"{end}\"");
+        }
+
+        public Task<List<GoogleHealthNutritionDataPoint>> GetTodayNutrition() =>
+            GetDayNutrition(DateOnly.FromDateTime(DateTime.Today));
+
+        public async Task<DailyFitnessSnapshot> GetDailySnapshot()
+        {
+            var exercisesTask = Get24HourExercises();
+            var stepsTask     = Get24HourStepCount();
+            var sleepTask     = Get24HourSleep();
+            var hrTask        = GetRestingHeartRate(1);
+            await Task.WhenAll(exercisesTask, stepsTask, sleepTask, hrTask);
+
+            var mainSleep  = sleepTask.Result.OrderByDescending(s => s.Sleep.Summary.MinutesAsleep).FirstOrDefault();
+            var sleepHours = mainSleep?.Sleep.GetDurationHours() is double h && h > 0 ? h : (double?)null;
+
+            var latestHr = hrTask.Result.LastOrDefault();
+            var hrBpm    = latestHr is not null && latestHr.DailyRestingHeartRate.BeatsPerMinute > 0
+                ? latestHr.DailyRestingHeartRate.BeatsPerMinute : (int?)null;
+
+            var activities = exercisesTask.Result
+                .GroupBy(e => NormalizeActivityName(
+                    !string.IsNullOrWhiteSpace(e.Exercise.DisplayName)
+                        ? e.Exercise.DisplayName
+                        : e.Exercise.ExerciseType))
+                .Select(g => new FitnessActivityEntry
+                {
+                    Name    = g.Key,
+                    Minutes = g.Sum(e => ParseDurationSeconds(e.Exercise.ActiveDuration) / 60),
+                })
+                .ToList();
+
+            return new DailyFitnessSnapshot
+            {
+                SleepHours   = sleepHours,
+                Steps        = stepsTask.Result,
+                RestingHrBpm = hrBpm,
+                Activities   = activities,
+            };
+        }
+
+        public async Task<WeeklyFitnessSnapshot> GetWeeklySnapshot()
+        {
+            var exercisesTask = Get7DayExercises();
+            var stepsTask     = Get7DayStepCount();
+            var sleepTask     = Get7DaySleep();
+            var weightTask    = GetRecentWeight(7);
+            var hrTask        = GetRestingHeartRate(7);
+            await Task.WhenAll(exercisesTask, stepsTask, sleepTask, weightTask, hrTask);
+
+            var sleepDurations = sleepTask.Result.Select(dp => dp.Sleep.GetDurationHours()).Where(h => h > 0).ToList();
+            double? avgSleep = sleepDurations.Count > 0 ? sleepDurations.Average() : null;
+
+            var hrValues = hrTask.Result.Select(h => h.DailyRestingHeartRate.BeatsPerMinute).Where(v => v > 0).ToList();
+            double? avgHr = hrValues.Count > 0 ? hrValues.Average() : null;
+
+            double? weightDelta = null;
+            var ordered = weightTask.Result.OrderBy(w => w.Weight.SampleTime.PhysicalTime).ToList();
+            if (ordered.Count >= 2)
+            {
+                var first = ordered[0].Weight.WeightKg.HasValue  ? ordered[0].Weight.WeightKg!.Value * 2.20462 : (double?)null;
+                var last  = ordered[^1].Weight.WeightKg.HasValue ? ordered[^1].Weight.WeightKg!.Value * 2.20462 : (double?)null;
+                if (first.HasValue && last.HasValue)
+                    weightDelta = last.Value - first.Value;
+            }
+
+            int totalMins  = exercisesTask.Result.Sum(dp => ParseDurationSeconds(dp.Exercise.ActiveDuration) / 60);
+            var activities = exercisesTask.Result
+                .GroupBy(e => NormalizeActivityName(
+                    !string.IsNullOrWhiteSpace(e.Exercise.DisplayName)
+                        ? e.Exercise.DisplayName
+                        : e.Exercise.ExerciseType))
+                .Select(g => new FitnessActivityEntry
+                {
+                    Name    = g.Key,
+                    Minutes = g.Sum(e => ParseDurationSeconds(e.Exercise.ActiveDuration) / 60),
+                })
+                .ToList();
+
+            return new WeeklyFitnessSnapshot
+            {
+                AvgSleepHours        = avgSleep,
+                AvgStepsPerDay       = stepsTask.Result / 7,
+                AvgRestingHrBpm      = avgHr,
+                WeightDeltaLbs       = weightDelta,
+                TotalActivityMinutes = totalMins,
+                Activities           = activities,
+            };
+        }
+
         public async Task PostWeeklyFitnessStats()
         {
             Log.Information("GoogleHealthClient.PostWeeklyFitnessStats: START");
@@ -226,7 +331,7 @@ namespace dev_library.Clients.Fitness
             var weightTask = GetRecentWeight(7);
             var hrTask = GetRestingHeartRate(7);
             await Task.WhenAll(exercisesTask, stepsTask, sleepTask, weightTask, hrTask);
-            var weeklyEmbed = BuildWeeklyEmbed(_settings.Username, exercisesTask.Result, stepsTask.Result, sleepTask.Result, weightTask.Result, hrTask.Result);
+            var weeklyEmbed = BuildWeeklyEmbed(_settings.Username, exercisesTask.Result, stepsTask.Result, sleepTask.Result, weightTask.Result, hrTask.Result, _settings.HighestWeightLbs);
             await _discordClient.PostEmbed(_settings.ChannelId, weeklyEmbed);
             FitnessRepository.LogPost(_settings.Username, "weekly");
             Log.Information("GoogleHealthClient.PostWeeklyFitnessStats: END");
@@ -297,7 +402,8 @@ namespace dev_library.Clients.Fitness
             long totalSteps,
             List<GoogleHealthSleepDataPoint> sleep,
             List<GoogleHealthWeightDataPoint> weightPoints,
-            List<GoogleHealthRestingHrDataPoint> heartRate)
+            List<GoogleHealthRestingHrDataPoint> heartRate,
+            double? highestWeightLbs = null)
         {
             var start = DateTime.Now.AddDays(-7);
             var end = DateTime.Now;
@@ -328,6 +434,12 @@ namespace dev_library.Clients.Fitness
                 {
                     var delta = last.Value - first.Value;
                     weightStr = $"{(delta >= 0 ? "+" : "")}{delta:0.0} lbs";
+                    if (highestWeightLbs.HasValue && last.Value > 0)
+                    {
+                        var lifetimeLoss = highestWeightLbs.Value - last.Value;
+                        if (lifetimeLoss > 0)
+                            weightStr += $" ({lifetimeLoss:0.0} lbs lost total)";
+                    }
                 }
             }
 
