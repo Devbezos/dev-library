@@ -237,6 +237,14 @@ namespace dev_library.Clients.Fitness
         public Task<List<GoogleHealthNutritionDataPoint>> GetTodayNutrition() =>
             GetDayNutrition(DateOnly.FromDateTime(DateTime.Today));
 
+        public async Task<double?> GetMostRecentWeightLbs()
+        {
+            var weights = await GetRecentWeight(90);
+            if (weights.Count == 0) return null;
+            var latest = weights.OrderByDescending(w => w.Weight.SampleTime.PhysicalTime).First();
+            return latest.Weight.WeightKg.HasValue ? latest.Weight.WeightKg!.Value * 2.20462 : null;
+        }
+
         public async Task<DailyFitnessSnapshot> GetDailySnapshot()
         {
             var exercisesTask = Get24HourExercises();
