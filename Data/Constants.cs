@@ -32,6 +32,11 @@
                 public const string Url = "https://wowaudit.com/v1";
             }
 
+            public static class WoWUtils
+            {
+                public const string BaseUrl = "https://wowutils.com/viserio-cooldowns";
+            }
+
             public static class BattleNet
             {
                 public const string RealmDataEndpoint = "/connected-realm/61?namespace=dynamic-us&locale=en_US";

@@ -55,7 +55,16 @@ namespace dev_library.Data
 
     public class DroptimizerSettings
     {
+        /// <summary>"wowaudit" (default) or "wowutils"</summary>
+        public string Source { get; set; } = "wowaudit";
+
+        // WoWAudit
         public string Token { get; set; }
+
+        // WoWUtils
+        public string GroupId { get; set; }
+        public string SessionCookie { get; set; }
+
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }
     }
