@@ -53,9 +53,23 @@ namespace dev_library.Data.Discord
                     google_sheet_tab   VARCHAR(255) NULL,
                     google_sheet_creds VARCHAR(500) NULL,
                     app_sheet_id  VARCHAR(255) NULL,
-                    app_sheet_tab VARCHAR(255) NULL
+                    app_sheet_tab VARCHAR(255) NULL,
+                    is_deleted    TINYINT(1)   NOT NULL DEFAULT 0
                 )
                 """);
+
+            // Migrate: add is_deleted column if missing
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = """
+                    SELECT COUNT(*) FROM information_schema.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE()
+                      AND TABLE_NAME   = 'guilds'
+                      AND COLUMN_NAME  = 'is_deleted'
+                    """;
+                if (Convert.ToInt64(cmd.ExecuteScalar()) == 0)
+                    Exec(conn, "ALTER TABLE guilds ADD COLUMN is_deleted TINYINT(1) NOT NULL DEFAULT 0");
+            }
 
             Exec(conn, """
                 CREATE TABLE IF NOT EXISTS guild_channels (
@@ -89,6 +103,64 @@ namespace dev_library.Data.Discord
         // ── Read ──────────────────────────────────────────────────────────
 
         public static List<GuildSettingsDto> GetAll()
+        {
+            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            conn.Open();
+
+            var map = new Dictionary<string, GuildSettingsDto>(StringComparer.Ordinal);
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT * FROM guilds WHERE is_deleted = 0 ORDER BY name";
+                using var r = cmd.ExecuteReader();
+                while (r.Read()) { var dto = ReadRow(r); map[dto.Name] = dto; }
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT guild_name, channel_key, channel_id FROM guild_channels";
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                    if (map.TryGetValue(r.GetString("guild_name"), out var dto))
+                        dto.Channels[r.GetString("channel_key")] = r.GetUInt64("channel_id").ToString();
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT guild_name, role_id FROM guild_roles";
+                var roles = new Dictionary<string, List<string>>();
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                {
+                    var gn = r.GetString("guild_name");
+                    if (!roles.TryGetValue(gn, out var list)) roles[gn] = list = [];
+                    list.Add(r.GetString("role_id"));
+                }
+                foreach (var (gn, list) in roles)
+                    if (map.TryGetValue(gn, out var dto))
+                        dto.RolesToPing = [.. list];
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT guild_name, user_id FROM guild_deny_users";
+                var denies = new Dictionary<string, List<string>>();
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                {
+                    var gn = r.GetString("guild_name");
+                    if (!denies.TryGetValue(gn, out var list)) denies[gn] = list = [];
+                    list.Add(r.GetUInt64("user_id").ToString());
+                }
+                foreach (var (gn, list) in denies)
+                    if (map.TryGetValue(gn, out var dto))
+                        dto.DenyUserIds = [.. list];
+            }
+
+            return [.. map.Values];
+        }
+
+        public static List<GuildSettingsDto> GetAllIncludingDeleted()
         {
             using var conn = new MySqlConnection(SqlClient.ConnectionString);
             conn.Open();
@@ -174,7 +246,7 @@ namespace dev_library.Data.Discord
             using var conn = new MySqlConnection(SqlClient.ConnectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "DELETE FROM guilds WHERE name = @name"; // CASCADE handles child rows
+            cmd.CommandText = "UPDATE guilds SET is_deleted = 1 WHERE name = @name";
             cmd.Parameters.AddWithValue("@name", name);
             cmd.ExecuteNonQuery();
         }
@@ -221,7 +293,8 @@ namespace dev_library.Data.Discord
                     drop_token    = @dtoken, drop_start    = @dstart, drop_end    = @dend,
                     google_sheet_name = @gsname, google_sheet_id = @gsid,
                     google_sheet_tab  = @gstab,  google_sheet_creds = @gscreds,
-                    app_sheet_id  = @asid,   app_sheet_tab  = @astab
+                    app_sheet_id  = @asid,   app_sheet_tab  = @astab,
+                    is_deleted    = 0
                 """;
             AddParams(cmd, dto);
             cmd.ExecuteNonQuery();
@@ -315,6 +388,7 @@ namespace dev_library.Data.Discord
             {
                 Name     = r.GetString("name"),
                 Nickname = Str(r, "nickname") ?? string.Empty,
+                IsDeleted = r.GetBoolean("is_deleted"),
                 Features = new GuildFeatures
                 {
                     Droptimizer         = r.GetBoolean("feature_droptimizer"),

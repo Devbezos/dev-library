@@ -140,5 +140,6 @@ namespace dev_library.Data
         public string RefreshToken { get; set; } = string.Empty;
         public ulong ChannelId { get; set; }
         public bool Enabled { get; set; } = true;
+        public bool IsDeleted { get; set; } = false;
     }
 }

@@ -36,7 +36,8 @@ namespace dev_library.Data.Fitness
                     enabled       TINYINT(1)      NOT NULL DEFAULT 1,
                     client_id     VARCHAR(255)    NOT NULL DEFAULT '',
                     client_secret VARCHAR(255)    NOT NULL DEFAULT '',
-                    refresh_token VARCHAR(2048)   NOT NULL DEFAULT ''
+                    refresh_token VARCHAR(2048)   NOT NULL DEFAULT '',
+                    is_deleted    TINYINT(1)      NOT NULL DEFAULT 0
                 )
                 """;
             cmd.ExecuteNonQuery();
@@ -47,6 +48,7 @@ namespace dev_library.Data.Fitness
                 ("client_id",     "VARCHAR(255)  NOT NULL DEFAULT ''"),
                 ("client_secret", "VARCHAR(255)  NOT NULL DEFAULT ''"),
                 ("refresh_token", "VARCHAR(2048) NOT NULL DEFAULT ''"),
+                ("is_deleted",    "TINYINT(1)    NOT NULL DEFAULT 0"),
             })
             {
                 cmd.CommandText = $"""
@@ -109,7 +111,7 @@ namespace dev_library.Data.Fitness
             using var conn = new MySqlConnection(SqlClient.ConnectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT username, channel_id, enabled, client_id, client_secret, refresh_token FROM fitness_users ORDER BY username";
+            cmd.CommandText = "SELECT username, channel_id, enabled, client_id, client_secret, refresh_token FROM fitness_users WHERE is_deleted = 0 ORDER BY username";
             using var reader = cmd.ExecuteReader();
             var result = new List<GoogleHealthUserSettings>();
             while (reader.Read())
@@ -121,6 +123,28 @@ namespace dev_library.Data.Fitness
                     ClientId     = reader.GetString("client_id"),
                     ClientSecret = reader.GetString("client_secret"),
                     RefreshToken = reader.GetString("refresh_token"),
+                });
+            return [.. result];
+        }
+
+        public static GoogleHealthUserSettings[] GetGoogleHealthSettingsAll()
+        {
+            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT username, channel_id, enabled, client_id, client_secret, refresh_token, is_deleted FROM fitness_users ORDER BY username";
+            using var reader = cmd.ExecuteReader();
+            var result = new List<GoogleHealthUserSettings>();
+            while (reader.Read())
+                result.Add(new GoogleHealthUserSettings
+                {
+                    Username     = reader.GetString("username"),
+                    ChannelId    = reader.GetUInt64("channel_id"),
+                    Enabled      = reader.GetBoolean("enabled"),
+                    ClientId     = reader.GetString("client_id"),
+                    ClientSecret = reader.GetString("client_secret"),
+                    RefreshToken = reader.GetString("refresh_token"),
+                    IsDeleted    = reader.GetBoolean("is_deleted"),
                 });
             return [.. result];
         }
@@ -139,7 +163,8 @@ namespace dev_library.Data.Fitness
                     enabled       = @enabled,
                     client_id     = @clientId,
                     client_secret = @clientSecret,
-                    refresh_token = @refreshToken
+                    refresh_token = @refreshToken,
+                    is_deleted    = 0
                 """;
             cmd.Parameters.AddWithValue("@username",     username);
             cmd.Parameters.AddWithValue("@channelId",    channelId);
@@ -155,7 +180,7 @@ namespace dev_library.Data.Fitness
             using var conn = new MySqlConnection(SqlClient.ConnectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT username, channel_id, enabled FROM fitness_users WHERE enabled = 1";
+            cmd.CommandText = "SELECT username, channel_id, enabled FROM fitness_users WHERE enabled = 1 AND is_deleted = 0";
             using var reader = cmd.ExecuteReader();
             var result = new List<FitnessUser>();
             while (reader.Read())
@@ -173,7 +198,7 @@ namespace dev_library.Data.Fitness
             using var conn = new MySqlConnection(SqlClient.ConnectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT username, channel_id, enabled FROM fitness_users ORDER BY username";
+            cmd.CommandText = "SELECT username, channel_id, enabled FROM fitness_users WHERE is_deleted = 0 ORDER BY username";
             using var reader = cmd.ExecuteReader();
             var result = new List<FitnessUser>();
             while (reader.Read())
@@ -226,7 +251,7 @@ namespace dev_library.Data.Fitness
             using var conn = new MySqlConnection(SqlClient.ConnectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "DELETE FROM fitness_users WHERE username = @username";
+            cmd.CommandText = "UPDATE fitness_users SET is_deleted = 1 WHERE username = @username";
             cmd.Parameters.AddWithValue("@username", username);
             cmd.ExecuteNonQuery();
         }

@@ -15,6 +15,7 @@ namespace dev_library.Data.Discord
         public GoogleSheetsSettings? GoogleSheet { get; set; }
         public ApplicationSheetSettings? ApplicationSheet { get; set; }
         public string[] DenyUserIds { get; set; } = [];
+        public bool IsDeleted { get; set; } = false;
 
         public static GuildSettingsDto From(GuildSettings g) => new()
         {

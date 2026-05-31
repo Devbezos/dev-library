@@ -4,7 +4,7 @@ using MySqlConnector;
 
 namespace dev_library.Data.Discord
 {
-    public record AppChannelEntry(string GuildName, ulong ChannelId, string ChannelName = "");
+    public record AppChannelEntry(string GuildName, ulong ChannelId, string ChannelName = "", bool IsDeleted = false);
 
     public record TrackedApplication(ulong MessageId, ulong ChannelId, ulong ArchiveCategoryId, ulong[] DenyUserIds, string GuildName, string ChannelName = "");
 
@@ -32,6 +32,7 @@ namespace dev_library.Data.Discord
                     channel_id   BIGINT UNSIGNED NOT NULL,
                     guild_name   VARCHAR(255)    NOT NULL,
                     channel_name VARCHAR(255)    NOT NULL DEFAULT '',
+                    is_deleted   TINYINT(1)      NOT NULL DEFAULT 0,
                     PRIMARY KEY (channel_id)
                 )
                 """;
@@ -53,6 +54,22 @@ namespace dev_library.Data.Discord
                 }
             }
 
+            // Migrate: add is_deleted column if missing
+            using (var migrate = conn.CreateCommand())
+            {
+                migrate.CommandText = """
+                    SELECT COUNT(*) FROM information_schema.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE()
+                      AND TABLE_NAME   = 'app_channels'
+                      AND COLUMN_NAME  = 'is_deleted'
+                    """;
+                if (Convert.ToInt64(migrate.ExecuteScalar()) == 0)
+                {
+                    migrate.CommandText = "ALTER TABLE app_channels ADD COLUMN is_deleted TINYINT(1) NOT NULL DEFAULT 0";
+                    migrate.ExecuteNonQuery();
+                }
+            }
+
             GuildRepository.EnsureTable();
             FitnessRepository.EnsureTable();
             FitnessRepository.EnsureUsersTable(AppSettings.GoogleHealth);
@@ -64,11 +81,28 @@ namespace dev_library.Data.Discord
             using var conn = new MySqlConnection(ConnectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT channel_id, guild_name, channel_name FROM app_channels";
+            cmd.CommandText = "SELECT channel_id, guild_name, channel_name FROM app_channels WHERE is_deleted = 0";
             using var reader = cmd.ExecuteReader();
             var result = new List<AppChannelEntry>();
             while (reader.Read())
                 result.Add(new AppChannelEntry(reader.GetString("guild_name"), reader.GetUInt64("channel_id"), reader.GetString("channel_name")));
+            return result;
+        }
+
+        public static List<AppChannelEntry> LoadAllIncludingDeleted()
+        {
+            using var conn = new MySqlConnection(ConnectionString);
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT channel_id, guild_name, channel_name, is_deleted FROM app_channels";
+            using var reader = cmd.ExecuteReader();
+            var result = new List<AppChannelEntry>();
+            while (reader.Read())
+                result.Add(new AppChannelEntry(
+                    reader.GetString("guild_name"),
+                    reader.GetUInt64("channel_id"),
+                    reader.GetString("channel_name"),
+                    reader.GetBoolean("is_deleted")));
             return result;
         }
 
@@ -92,7 +126,7 @@ namespace dev_library.Data.Discord
             using var conn = new MySqlConnection(ConnectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "DELETE FROM app_channels WHERE channel_id = @channelId";
+            cmd.CommandText = "UPDATE app_channels SET is_deleted = 1 WHERE channel_id = @channelId";
             cmd.Parameters.AddWithValue("@channelId", channelId);
             cmd.ExecuteNonQuery();
         }
