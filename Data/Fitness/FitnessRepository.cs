@@ -232,18 +232,29 @@ namespace dev_library.Data.Fitness
             using var conn = new MySqlConnection(SqlClient.ConnectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT username, post_type, posted_at FROM fitness_posts ORDER BY posted_at DESC LIMIT @limit";
+            cmd.CommandText = "SELECT id, username, post_type, posted_at FROM fitness_posts ORDER BY posted_at DESC LIMIT @limit";
             cmd.Parameters.AddWithValue("@limit", limit);
             using var reader = cmd.ExecuteReader();
             var result = new List<FitnessPost>();
             while (reader.Read())
                 result.Add(new FitnessPost
                 {
+                    Id        = reader.GetInt32("id"),
                     Username  = reader.GetString("username"),
                     PostType  = reader.GetString("post_type"),
                     PostedAt  = reader.GetDateTime("posted_at"),
                 });
             return result;
+        }
+
+        public static void DeletePost(int id)
+        {
+            using var conn = new MySqlConnection(SqlClient.ConnectionString);
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM fitness_posts WHERE id = @id";
+            cmd.Parameters.AddWithValue("@id", id);
+            cmd.ExecuteNonQuery();
         }
 
         public static void DeleteUser(string username)
@@ -259,6 +270,7 @@ namespace dev_library.Data.Fitness
 
     public class FitnessPost
     {
+        public int      Id       { get; set; }
         public string   Username { get; set; } = string.Empty;
         public string   PostType { get; set; } = string.Empty;
         public DateTime PostedAt { get; set; }
