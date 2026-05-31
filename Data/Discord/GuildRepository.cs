@@ -278,12 +278,12 @@ namespace dev_library.Data.Discord
             cmd.CommandText = """
                 INSERT INTO guilds
                     (name, nickname, feature_droptimizer, feature_droptimizer_reminder, feature_key_audit, feature_server_availability,
-                     drop_token, drop_start, drop_end,
+                     drop_token, drop_start, drop_end, drop_source, drop_group_id, drop_session_cookie,
                      google_sheet_name, google_sheet_id, google_sheet_tab, google_sheet_creds,
                      app_sheet_id, app_sheet_tab)
                 VALUES
                     (@name, @nickname, @fdrop, @fremind, @fkey, @favail,
-                     @dtoken, @dstart, @dend,
+                     @dtoken, @dstart, @dend, @dsource, @dgroupid, @dsessioncookie,
                      @gsname, @gsid, @gstab, @gscreds,
                      @asid, @astab)
                 ON DUPLICATE KEY UPDATE
@@ -291,6 +291,7 @@ namespace dev_library.Data.Discord
                     feature_droptimizer          = @fdrop,  feature_droptimizer_reminder = @fremind,
                     feature_key_audit            = @fkey,   feature_server_availability  = @favail,
                     drop_token    = @dtoken, drop_start    = @dstart, drop_end    = @dend,
+                    drop_source   = @dsource, drop_group_id = @dgroupid, drop_session_cookie = @dsessioncookie,
                     google_sheet_name = @gsname, google_sheet_id = @gsid,
                     google_sheet_tab  = @gstab,  google_sheet_creds = @gscreds,
                     app_sheet_id  = @asid,   app_sheet_tab  = @astab,
@@ -308,12 +309,12 @@ namespace dev_library.Data.Discord
             cmd.CommandText = $"""
                 {kw} INTO guilds
                     (name, nickname, feature_droptimizer, feature_droptimizer_reminder, feature_key_audit, feature_server_availability,
-                     drop_token, drop_start, drop_end,
+                     drop_token, drop_start, drop_end, drop_source, drop_group_id, drop_session_cookie,
                      google_sheet_name, google_sheet_id, google_sheet_tab, google_sheet_creds,
                      app_sheet_id, app_sheet_tab)
                 VALUES
                     (@name, @nickname, @fdrop, @fremind, @fkey, @favail,
-                     @dtoken, @dstart, @dend,
+                     @dtoken, @dstart, @dend, @dsource, @dgroupid, @dsessioncookie,
                      @gsname, @gsid, @gstab, @gscreds,
                      @asid, @astab)
                 """;
@@ -371,9 +372,12 @@ namespace dev_library.Data.Discord
             cmd.Parameters.AddWithValue("@fremind", feat.DroptimizerReminder);
             cmd.Parameters.AddWithValue("@fkey",    feat.KeyAudit);
             cmd.Parameters.AddWithValue("@favail",  feat.ServerAvailability);
-            cmd.Parameters.AddWithValue("@dtoken",  NullIfEmpty(drop?.Token));
-            cmd.Parameters.AddWithValue("@dstart",  (object?)drop?.StartDate ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@dend",    (object?)drop?.EndDate   ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@dtoken",          NullIfEmpty(drop?.Token));
+            cmd.Parameters.AddWithValue("@dstart",          (object?)drop?.StartDate ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@dend",            (object?)drop?.EndDate   ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@dsource",         NullIfEmpty(drop?.Source));
+            cmd.Parameters.AddWithValue("@dgroupid",        NullIfEmpty(drop?.GroupId));
+            cmd.Parameters.AddWithValue("@dsessioncookie",  NullIfEmpty(drop?.SessionCookie));
             cmd.Parameters.AddWithValue("@gsname",  NullIfEmpty(gs?.Name));
             cmd.Parameters.AddWithValue("@gsid",    NullIfEmpty(gs?.Id));
             cmd.Parameters.AddWithValue("@gstab",   NullIfEmpty(gs?.SheetName));
@@ -398,12 +402,22 @@ namespace dev_library.Data.Discord
                 }
             };
 
-            var dToken = Str(r, "drop_token");
-            var dStart = Dt(r, "drop_start");
-            var dEnd   = Dt(r, "drop_end");
-            if (dToken != null || dStart != null || dEnd != null)
+            var dToken  = Str(r, "drop_token");
+            var dStart  = Dt(r,  "drop_start");
+            var dEnd    = Dt(r,  "drop_end");
+            var dSource = Str(r, "drop_source");
+            var dGroup  = Str(r, "drop_group_id");
+            var dCookie = Str(r, "drop_session_cookie");
+            if (dToken != null || dStart != null || dEnd != null || dSource != null || dGroup != null || dCookie != null)
                 dto.Droptimizer = new DroptimizerSettings
-                    { Token = dToken ?? string.Empty, StartDate = dStart, EndDate = dEnd };
+                {
+                    Token         = dToken  ?? string.Empty,
+                    StartDate     = dStart,
+                    EndDate       = dEnd,
+                    Source        = dSource ?? "wowaudit",
+                    GroupId       = dGroup,
+                    SessionCookie = dCookie
+                };
 
             var gsId = Str(r, "google_sheet_id");
             if (gsId != null)
