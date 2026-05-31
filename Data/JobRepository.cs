@@ -146,13 +146,15 @@ namespace dev_library.Data
         public static bool ShouldRunThisWeek(ScheduledJob job, DateTime nowEastern, TimeZoneInfo tz)
         {
             if (!job.Enabled) return false;
-            if (job.Hour != nowEastern.Hour || job.Minute != nowEastern.Minute) return false;
 
             // Only fire on the configured day (default Sunday)
             var weekDay = job.DayOfWeek ?? (int)DayOfWeek.Sunday;
             if ((int)nowEastern.DayOfWeek != weekDay) return false;
 
+            // If never run, fire on the next tick on the correct day (no time check needed)
             if (job.LastRun == null) return true;
+
+            if (job.Hour != nowEastern.Hour || job.Minute != nowEastern.Minute) return false;
             var lastRunEastern = TimeZoneInfo.ConvertTime(
                 DateTime.SpecifyKind(job.LastRun.Value, DateTimeKind.Utc), tz);
             // Week boundary = most recent occurrence of the configured day
