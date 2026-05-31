@@ -24,7 +24,7 @@ namespace dev_library.Clients
 
         private SheetsService GetSheetsService()
         {
-            Console.WriteLine("GoogleSheetsClient.GetSheetsService: START");
+            Log.Debug("GoogleSheetsClient.GetSheetsService: START");
             GoogleCredential credential;
             using (var stream = new FileStream(_sheet.CredentialsPath, FileMode.Open, FileAccess.Read))
             {
@@ -37,7 +37,7 @@ namespace dev_library.Clients
                 ApplicationName = _sheet.SheetName,
             });
 
-            Console.WriteLine("GoogleSheetsClient.GetSheetsService: END");
+            Log.Debug("GoogleSheetsClient.GetSheetsService: END");
             return service;
         }
 
@@ -71,11 +71,11 @@ namespace dev_library.Clients
 
         private async Task ClearSheet()
         {
-            Console.WriteLine("GoogleSheetsClient.ClearSheet: START");
+            Log.Debug("GoogleSheetsClient.ClearSheet: START");
             var requestBody = new ClearValuesRequest();
             var request = SheetsService.Spreadsheets.Values.Clear(requestBody, _sheet.Id, $"{_sheet.SheetName}!A:F");
             await request.ExecuteAsync();
-            Console.WriteLine("GoogleSheetsClient.ClearSheet: END");
+            Log.Debug("GoogleSheetsClient.ClearSheet: END");
         }
 
         private async Task WriteEntries(List<ItemUpgrade> entries)

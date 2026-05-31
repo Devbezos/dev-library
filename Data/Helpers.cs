@@ -2,44 +2,28 @@
 
 namespace dev_library.Data
 {
-    public class Helpers
+    public static class Helpers
     {
-        public static string GetDifficulty(string difficulty)
-        {
-            switch (difficulty.ToUpper())
+        public static string GetDifficulty(string difficulty) =>
+            difficulty.ToUpper() switch
             {
-                case "RAID-MYTHIC":
-                    return "Mythic Raid";
-                case "RAID-HEROIC":
-                    return "Heroic Raid";
-                case "DUNGEON-MYTHIC10":
-                    return "Dungeon";
-                case "DUNGEON-MYTHIC-WEEKLY10":
-                    return "Dungeon Vault";
-                default:
-                    return string.Empty;
-            }
-        }
+                "RAID-MYTHIC"            => "Mythic Raid",
+                "RAID-HEROIC"            => "Heroic Raid",
+                "DUNGEON-MYTHIC10"       => "Dungeon",
+                "DUNGEON-MYTHIC-WEEKLY10" => "Dungeon Vault",
+                _                        => string.Empty,
+            };
 
-        public static string GetItemSlot(string itemSlot)
-        {
-            switch (itemSlot.ToUpper())
+        public static string GetItemSlot(string itemSlot) =>
+            itemSlot.ToUpper() switch
             {
-                case "FINGER1":
-                    return "Ring1";
-                case "FINGER2":
-                    return "Ring2";
-                case "MAIN_HAND":
-                    return "Weapon";
-                case "OFF_HAND":
-                    return "Offhand";
-                case "MISCELLANEOUS":
-                    return "Curio";
-                default:
-                    return itemSlot;
-            }
-        }
-
+                "FINGER1"       => "Ring1",
+                "FINGER2"       => "Ring2",
+                "MAIN_HAND"     => "Weapon",
+                "OFF_HAND"      => "Offhand",
+                "MISCELLANEOUS" => "Curio",
+                _               => itemSlot,
+            };
 
         public static List<string> ExtractUrls(string text)
         {

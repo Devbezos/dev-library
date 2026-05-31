@@ -11,8 +11,6 @@ namespace dev_library.Clients.Fitness
 {
     public class GoogleHealthClient
     {
-
-
         private readonly ICustomDiscordClient _discordClient;
         private readonly GoogleHealthUserSettings _settings;
 

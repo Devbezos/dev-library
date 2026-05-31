@@ -23,7 +23,7 @@ namespace dev_refined.Clients
             if (SendMessageAsync != null)
                 await SendMessageAsync(channelId, message);
             else
-                Console.WriteLine($"[WARN] DiscordClient.SendMessageAsync not wired up. Message: {message}");
+                Log.Warning("DiscordClient.PostToChannel: SendMessageAsync not wired up. Message: {Message}", message);
 
             Log.Information("DiscordClient.PostToChannel: END");
         }
@@ -35,7 +35,7 @@ namespace dev_refined.Clients
             if (SendEmbedAsync != null)
                 await SendEmbedAsync(channelId, embed);
             else
-                Console.WriteLine($"[WARN] DiscordClient.SendEmbedAsync not wired up. Embed: {embed.Title}");
+                Log.Warning("DiscordClient.PostEmbed: SendEmbedAsync not wired up. Title: {Title}", embed.Title);
 
             Log.Information("DiscordClient.PostEmbed: END");
         }
@@ -170,7 +170,7 @@ namespace dev_refined.Clients
                     foreach (var product in itemInStock.Products)
                     {
                         var productInfo = $"New Item Now In Stock: {product.Name}, Price: {product.Price}";
-                        Console.WriteLine($"Program.PostResults: {productInfo}");
+                        Log.Information("DiscordClient.PostWebHook: {ProductInfo}", productInfo);
                         webHookValue += $"      - {product.Url}";
                     }
                 }
@@ -182,7 +182,7 @@ namespace dev_refined.Clients
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine(ex.Message);
+                    Log.Error(ex, "DiscordClient.PostWebHook: Failed to send message");
                     throw;
                 }
             }

@@ -9,8 +9,6 @@ namespace dev_library.Data
         public static BattleNetSettings BattleNet { get; set; }
         public static GuildSettings[] Guilds { get; set; }
         public static SoundboardSettings Soundboard { get; set; } = new();
-        // public static FitbitSettings FitbitSettings { get; set; }
-        // public static GptSettings GptSettings { get; set; }
         public static string BasePath { get; set; } = $"{Path.GetPathRoot(AppContext.BaseDirectory)}Code";
 
         public static MySqlSettings MySql { get; set; } = new();
@@ -32,8 +30,6 @@ namespace dev_library.Data
             MySql = config.GetSection("mySql").Get<MySqlSettings>() ?? new MySqlSettings();
             WarcraftLogs = config.GetSection("warcraftLogs").Get<WarcraftLogsSettings>();
             GoogleHealth = config.GetSection("googleHealth").Get<GoogleHealthUserSettings[]>() ?? Array.Empty<GoogleHealthUserSettings>();
-            // FitbitSettings = config.GetSection("fitbit").Get<FitbitSettings>();
-            // GptSettings = config.GetSection("gpt").Get<GptSettings>();
         }
     }
 
@@ -97,22 +93,6 @@ namespace dev_library.Data
         public ulong[] UserIds { get; set; } = Array.Empty<ulong>();
         public string SoundsPath { get; set; } = string.Empty;
     }
-
-    // public class FitbitSettings
-    // {
-    //     public string ClientId { get; set; }
-    //     public string ClientSecret { get; set; }
-    //     public string WebHookUrl { get; set; }
-    //     public string AuthorizationCode { get; set; }
-    // }
-
-    // public class GptSettings
-    // {
-    //     public string ApiToken { get; set; }
-    //     public string Prefix { get; set; }
-    //     public string Suffix { get; set; }
-    //     public string AllowedRoles { get; set; }
-    // }
 
     public class MySqlSettings
     {
