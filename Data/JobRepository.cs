@@ -114,5 +114,26 @@ namespace dev_library.Data
             job.Hour   == now.Hour &&
             job.Minute == now.Minute &&
             (job.LastRun == null || (DateTime.UtcNow - job.LastRun.Value).TotalMinutes >= 1);
+
+        // Catch-up: true if the job should have run today but hasn't yet.
+        // nowEastern must already be converted to the local/zoned time; tz is used to compute
+        // the UTC equivalent of today's scheduled slot so last_run (stored as UTC) can be compared.
+        public static bool ShouldRunCatchUp(ScheduledJob job, DateTime nowEastern, TimeZoneInfo tz)
+        {
+            if (!job.Enabled) return false;
+            if (job.DayOfWeek != null && job.DayOfWeek != (int)nowEastern.DayOfWeek) return false;
+
+            // Scheduled time hasn't arrived yet today — nothing to catch up
+            if (nowEastern.Hour < job.Hour || (nowEastern.Hour == job.Hour && nowEastern.Minute < job.Minute))
+                return false;
+
+            // Compute the UTC timestamp of today's scheduled run
+            var scheduledLocal = new DateTime(nowEastern.Year, nowEastern.Month, nowEastern.Day,
+                                              job.Hour, job.Minute, 0, DateTimeKind.Unspecified);
+            var scheduledUtc = TimeZoneInfo.ConvertTimeToUtc(scheduledLocal, tz);
+
+            // Run if never ran, or last run was before today's scheduled time
+            return job.LastRun == null || job.LastRun.Value < scheduledUtc;
+        }
     }
 }
