@@ -6,7 +6,7 @@ namespace dev_library.Data.WoW.Blizzard
     public class ConnectedRealm
     {
         [JsonProperty("href")]
-        private string href;
+        private string href = string.Empty;
 
         public string Href { get => href[..href.LastIndexOf('?')]; set => href = value; }
     }
@@ -14,22 +14,22 @@ namespace dev_library.Data.WoW.Blizzard
     public class Links
     {
         [JsonProperty("self")]
-        public Self Self;
+        public Self Self = new();
     }
 
     public class BlizzardRealmsResponse
     {
         [JsonProperty("_links")]
-        public Links Links;
+        public Links Links = new();
 
         [JsonProperty("connected_realms")]
-        public List<ConnectedRealm> ConnectedRealms;
+        public List<ConnectedRealm> ConnectedRealms = new();
     }
 
     public class Self
     {
         [JsonProperty("href")]
-        public string Href;
+        public string Href = string.Empty;
     }
 
 

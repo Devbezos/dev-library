@@ -1,6 +1,5 @@
 ﻿using dev_library.Data;
 using HtmlAgilityPack;
-using System.Text.RegularExpressions;
 
 namespace dev_library.Clients
 {
@@ -8,64 +7,52 @@ namespace dev_library.Clients
     {
         private static readonly HttpClient client = new();
         private static readonly string _401SearchUrl = "https://store.401games.ca/collections/pokemon-trading-cards?sort=price_max_to_min&filters=Product+Type,Product+Type_Booster+Boxes,Price_from_to,66-400,In+Stock,True";
-        private static readonly string jjAddToCartUrl = "https://shop.jjcards.com/add_cart.asp?quick=1&item_id={0}&cat_id=0";
-        private static readonly List<string> Keywords = new List<string>() { "Pokemon TCG" };
+        private static readonly string _401BaseUrl = "https://store.401games.ca";
 
         public async Task<List<Search>> GetPokemon()
         {
-            var searchList = new List<Search>();
-            client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
+            var allProducts = new List<Product>();
+            if (!client.DefaultRequestHeaders.Contains("User-Agent"))
+                client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
 
             try
             {
-                foreach (var keyword in Keywords)
+                string content = await client.GetStringAsync(_401SearchUrl);
+                var doc = new HtmlDocument();
+                doc.LoadHtml(content);
+
+                var products = doc.DocumentNode.SelectNodes("//div[contains(@class, 'product-container')]");
+                if (products == null || products.Count == 0)
                 {
-                    string content = await client.GetStringAsync(_401SearchUrl);
-                    var doc = new HtmlDocument();
-                    doc.LoadHtml(content);
-
-                    var jsonMatch = Regex.Match(content, @"\{""name"":.*?\}");
-
-                    var products = doc.DocumentNode.SelectNodes("//div[contains(@class, 'product-container')]");
-                    var inStockProducts = new List<Product>();
-
-                    if (products == null || products.Count == 0)
-                    {
-                        Console.WriteLine($"No {keyword} found");
-                        continue;
-                    }
-
+                    Console.WriteLine("401Games: No products found");
+                }
+                else
+                {
                     foreach (var product in products)
                     {
-                        var nameNode = doc.DocumentNode.SelectSingleNode("//span[@class='product-title']");
-                        var priceNode = doc.DocumentNode.SelectSingleNode("//div[@class='fs-price']");
-                        var availabilityNode = doc.DocumentNode.SelectSingleNode("//span[@class='in-stock']");
+                        var nameNode  = product.SelectSingleNode(".//span[contains(@class,'product-title')]");
+                        var priceNode = product.SelectSingleNode(".//div[contains(@class,'fs-price')]");
+                        var linkNode  = product.SelectSingleNode(".//a[contains(@href,'/products/')]");
+                        if (nameNode == null || priceNode == null || linkNode == null) continue;
 
-                        if (nameNode != null && priceNode != null && availabilityNode != null)
-                        {
-                            string productName = nameNode.InnerText.Trim();
-                            var baseUrl = nameNode.Attributes["href"].Value;
-                            var itemId = Regex.Match(baseUrl, @"_(\d+)\.html$");
-
-                            var url = string.Format(jjAddToCartUrl, itemId.Groups[1].Value);
-                            string productPrice = priceNode.InnerText.Trim();
-                            string availability = availabilityNode.InnerText.Trim();
-
-                            if (availability.Trim().ToUpper() == "IN STOCK.")
-                            {
-                                inStockProducts.Add(new Product(productName, productPrice, url));
-                            }
-                        }
+                        var name  = nameNode.InnerText.Trim();
+                        var price = priceNode.InnerText.Trim();
+                        var href  = linkNode.GetAttributeValue("href", "");
+                        var url   = href.StartsWith("http") ? href : _401BaseUrl + href;
+                        allProducts.Add(new Product(name, price, url));
                     }
-                    searchList.Add(new Search(keyword, "401", inStockProducts));
-                    Console.WriteLine($"Found {products.Count} {keyword} products with {inStockProducts.Count} in stock");
+                    Console.WriteLine($"401Games: {products.Count} products found");
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error fetching webpage: {ex.Message}");
+                Console.WriteLine($"401Games: Error fetching webpage: {ex.Message}");
             }
-            return searchList;
+
+            return allProducts.Count > 0
+                ? new List<Search> { new Search("Pokemon", "401", allProducts) }
+                : new List<Search>();
         }
     }
 }
+

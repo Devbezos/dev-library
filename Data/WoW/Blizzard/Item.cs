@@ -16,6 +16,6 @@ namespace dev_library.Data.WoW.Blizzard
         public string Id { get; set; }
 
         [JsonProperty("bonus_lists")]
-        public List<int> BonusLists;
+        public List<int> BonusLists = new();
     }
 }

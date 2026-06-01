@@ -26,6 +26,8 @@ namespace dev_library.Data
             (Constants.Jobs.DroptimizerReminder, 2,    17, 0),   // 2 = Tuesday
             (Constants.Jobs.ServerAvailability,  null, 0,  0),   // runs every tick; hour/minute unused
             (Constants.Jobs.KeyAudit,            null, 0,  0),   // timing controlled by Helpers.IsKeyAuditTime
+            (Constants.Jobs.PokemonTcg,          null, 10, 0),   // every day at 10:00
+            (Constants.Jobs.GundamTcg,           null, 10, 0),   // every day at 10:00
         ];
 
         public void EnsureTable()

@@ -64,7 +64,7 @@ namespace dev_library.Clients
         {
             Log.Information("RaidBotsClient.GetItemUpgrades: START");
 
-            var items = JsonConvert.DeserializeObject<List<Item>>(File.ReadAllText($"{AppSettings.BasePath}/{Constants.WoW.RaidBots.CacheName}"));
+            var items = JsonConvert.DeserializeObject<List<Item>>(File.ReadAllText($"{AppSettings.BasePath}/{Constants.WoW.RaidBots.CacheName}")) ?? new List<Item>();
             var lastUpdated = DateTime.Now;
 
             var url = string.Format(Constants.WoW.RaidBots.FileUrlBase, reportId);

@@ -18,6 +18,8 @@ namespace dev_library
             services.AddSingleton<IGuildRepository>(_ => new GuildRepository(connectionString));
             services.AddSingleton<IFitnessRepository>(_ => new FitnessRepository(connectionString));
             services.AddSingleton<IJobRepository>(_ => new JobRepository(connectionString));
+            services.AddSingleton<ITcgRepository>(_ => new TcgRepository(connectionString));
+            services.AddSingleton<ITcgSourceUrlRepository>(_ => new TcgSourceUrlRepository(connectionString));
             return services;
         }
 

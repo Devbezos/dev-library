@@ -5,7 +5,7 @@ namespace dev_library.Data.WoW.WarcraftLogs
     public class WarcraftLogsOAuthResponse
     {
         [JsonProperty("access_token")]
-        public string AccessToken { get; set; }
+        public string AccessToken { get; set; } = string.Empty;
 
         [JsonProperty("expires_in")]
         public int ExpiresIn { get; set; }
@@ -26,7 +26,7 @@ namespace dev_library.Data.WoW.WarcraftLogs
     public class WarcraftLogsBossRanking
     {
         [JsonProperty("encounter")]
-        public WarcraftLogsEncounter Encounter { get; set; }
+        public WarcraftLogsEncounter Encounter { get; set; } = new();
 
         [JsonProperty("rankPercent")]
         public double? RankPercent { get; set; }
@@ -38,7 +38,7 @@ namespace dev_library.Data.WoW.WarcraftLogs
         public int Difficulty { get; set; }
 
         [JsonProperty("spec")]
-        public string Spec { get; set; }
+        public string Spec { get; set; } = string.Empty;
     }
 
     public class WarcraftLogsEncounter
@@ -47,13 +47,13 @@ namespace dev_library.Data.WoW.WarcraftLogs
         public int Id { get; set; }
 
         [JsonProperty("name")]
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
     }
 
     public class WarcraftLogsCharacterZoneRankings
     {
-        public string CharacterName { get; set; }
-        public string Url { get; set; }
+        public string CharacterName { get; set; } = string.Empty;
+        public string Url { get; set; } = string.Empty;
         public List<(string ZoneName, WarcraftLogsZoneRankings Rankings)> ZoneRankings { get; set; } = new();
     }
 }

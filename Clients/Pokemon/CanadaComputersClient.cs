@@ -7,7 +7,6 @@ namespace dev_library.Clients
     {
         private static readonly HttpClient client = new();
         private static readonly string ccSearchUrl = "https://www.canadacomputers.com/en/search?id_category=914&s={0}&a=0&b=0";
-        private static readonly string jjAddToCartUrl = "https://shop.jjcards.com/add_cart.asp?quick=1&item_id={0}&cat_id=0";
         private static readonly List<string> Keywords = new List<string>() { "gigabyte rtx 5080", "prismatic evolution" };
 
         public async Task<List<Search>> GetProducts()

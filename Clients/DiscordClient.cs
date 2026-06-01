@@ -3,6 +3,7 @@ using dev_library.Data;
 using dev_library.Data.Discord;
 using Discord;
 using Serilog;
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -10,11 +11,17 @@ namespace dev_refined.Clients
 {
     public class DiscordClient : IDiscordClient
     {
+        public const string TcgMessageHeader = "TCG Stock Monitor";
         public static Func<ulong, string, Task>? SendMessageAsync { get; set; }
+        public static Func<ulong, string, Task<ulong>>? SendMessageWithIdAsync { get; set; }
+        public static Func<ulong, ulong, string, Task>? EditMessageAsync { get; set; }
+        public static Func<ulong, ulong, Embed, Task>? EditEmbedMessageAsync { get; set; }
+        public static Func<ulong, Task<ulong?>>? GetLatestBotMessageIdAsync { get; set; }
         public static Func<ulong, Embed, Task>? SendEmbedAsync { get; set; }
         public static Func<ulong, string, Task<ulong>>? CreateApplicationChannelAsync { get; set; }
         public static Func<ulong, Embed, Task<ulong>>? SendEmbedWithIdAsync { get; set; }
         public static Func<ulong, ulong, Task>? PinMessageAsync { get; set; }
+        private static readonly ConcurrentDictionary<ulong, ulong> _tcgMessageByChannel = new();
 
         public async Task PostToChannel(ulong channelId, string message)
         {
@@ -122,7 +129,7 @@ namespace dev_refined.Clients
                 var categoryId = guild.Channels["applicationsCategory"];
                 var officerChannelId = guild.Channels["applicationsOfficer"];
                 var archiveCategoryId = guild.Channels.GetValueOrDefault("applicationsArchiveCategory");
-                var applications = await sheetsClient.ReadApplications(guild.ApplicationSheet);
+                var applications = await sheetsClient.ReadApplications(guild.ApplicationSheet!);
                 var unposted = applications.Where(a => !a.IsPosted).ToList();
 
                 if (unposted.Count == 0) continue;
@@ -133,7 +140,7 @@ namespace dev_refined.Clients
                     var (channelId, channelName, messageIds) = await PostApplication(categoryId, officerChannelId, app);
                     foreach (var msgId in messageIds.Where(id => id != 0))
                         result.Add(new TrackedApplication(msgId, channelId, archiveCategoryId, guild.DenyUserIds, guild.Name, channelName));
-                    await sheetsClient.MarkApplicationAsPosted(guild.ApplicationSheet, app.RowIndex);
+                    await sheetsClient.MarkApplicationAsPosted(guild.ApplicationSheet!, app.RowIndex);
                 }
             }
 
@@ -156,38 +163,86 @@ namespace dev_refined.Clients
             Log.Debug("DiscordClient.SendDroptimizerReminders: END");
         }
 
-        public async Task PostWebHook(List<Search> searchResults)
+        public async Task PostWebHook(ulong channelId, List<Search> searchResults)
         {
             Log.Information("DiscordClient.PostWebHook: START");
-            foreach (var storeGroup in searchResults.GroupBy(sr => sr.Store))
+            var embed = BuildTcgEmbed(searchResults);
+
+            try
             {
-                var webHookValue = $"- {storeGroup.Key}\n";
-
-                foreach (var itemInStock in storeGroup)
+                if (!_tcgMessageByChannel.TryGetValue(channelId, out var messageId) && GetLatestBotMessageIdAsync != null)
                 {
-                    webHookValue += $"  - {itemInStock.Keyword}\n";
-
-                    foreach (var product in itemInStock.Products)
+                    var existing = await GetLatestBotMessageIdAsync(channelId);
+                    if (existing.HasValue && existing.Value != 0)
                     {
-                        var productInfo = $"New Item Now In Stock: {product.Name}, Price: {product.Price}";
-                        Log.Information("DiscordClient.PostWebHook: {ProductInfo}", productInfo);
-                        webHookValue += $"      - {product.Url}";
+                        messageId = existing.Value;
+                        _tcgMessageByChannel[channelId] = messageId;
                     }
                 }
 
-                try
+                if (messageId != 0 && EditEmbedMessageAsync != null)
                 {
-                    if (SendMessageAsync != null)
-                        await SendMessageAsync(AppSettings.Guilds.First(g => g.Name == "POKEMON").Channels.GetValueOrDefault("general"), webHookValue);
+                    await EditEmbedMessageAsync(channelId, messageId, embed);
                 }
-                catch (Exception ex)
+                else if (SendEmbedWithIdAsync != null)
                 {
-                    Log.Error(ex, "DiscordClient.PostWebHook: Failed to send message");
-                    throw;
+                    var createdId = await SendEmbedWithIdAsync(channelId, embed);
+                    if (createdId != 0)
+                        _tcgMessageByChannel[channelId] = createdId;
                 }
+                else if (SendEmbedAsync != null)
+                {
+                    await SendEmbedAsync(channelId, embed);
+                }
+                else
+                {
+                    Log.Warning("DiscordClient.PostWebHook: no embed send/edit delegates are wired up");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "DiscordClient.PostWebHook: Failed to send or edit message");
+                throw;
             }
 
             Log.Information("DiscordClient.PostWebHook: END");
+        }
+
+        private static Embed BuildTcgEmbed(List<Search> searchResults)
+        {
+            var sb = new StringBuilder();
+            foreach (var storeGroup in searchResults.GroupBy(sr => sr.Store).OrderBy(g => g.Key))
+            {
+                var isExpensive = storeGroup.Key.Contains("💸 Expensive");
+                sb.AppendLine($"- {storeGroup.Key}");
+
+                foreach (var itemInStock in storeGroup)
+                {
+                    sb.AppendLine($"  - {itemInStock.Keyword}");
+                    foreach (var product in itemInStock.Products)
+                    {
+                        var url = isExpensive
+                            ? $"||{product.Url.TrimEnd()}||"
+                            : product.Url.TrimEnd();
+                        sb.AppendLine($"      - {url}");
+                    }
+                }
+            }
+
+            var description = sb.Length == 0 ? "No products found." : TrimForDiscordEmbedDescription(sb.ToString());
+            return new EmbedBuilder()
+                .WithTitle(TcgMessageHeader)
+                .WithDescription(description)
+                .WithFooter($"Updated: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC")
+                .WithColor(Color.Blue)
+                .Build();
+        }
+
+        private static string TrimForDiscordEmbedDescription(string message)
+        {
+            const int max = 3900;
+            if (message.Length <= max) return message;
+            return message[..(max - 28)] + "\n\n...message truncated...";
         }
     }
 }

@@ -14,7 +14,7 @@ namespace dev_library.Data.WoW.Blizzard
         public int Id;
 
         [JsonProperty("item")]
-        public Item Item;
+        public Item? Item;
 
         [JsonProperty("buyout")]
         public long Buyout;
@@ -23,7 +23,7 @@ namespace dev_library.Data.WoW.Blizzard
         public uint Quantity;
 
         [JsonProperty("time_left")]
-        public string TimeLeft;
+        public string TimeLeft = string.Empty;
 
         [JsonProperty("bid")]
         public long? Bid;
@@ -42,13 +42,13 @@ namespace dev_library.Data.WoW.Blizzard
     public class BlizzardAuctionResponse
     {
         [JsonProperty("_links")]
-        public Links Links;
+        public Links Links = new();
 
         [JsonProperty("connected_realm")]
-        public ConnectedRealm ConnectedRealm;
+        public ConnectedRealm ConnectedRealm = new();
 
         [JsonProperty("auctions")]
-        public List<Auction> Auctions;
+        public List<Auction> Auctions = new();
     }
 
 

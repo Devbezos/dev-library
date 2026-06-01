@@ -30,7 +30,7 @@ namespace dev_refined.Clients
             using var httpResponse = await client.SendAsync(request);
             var response = await httpResponse.Content.ReadAsStringAsync();
 
-            return JsonConvert.DeserializeObject<BlizzardOAuthResponse>(response).AccessToken;
+            return JsonConvert.DeserializeObject<BlizzardOAuthResponse>(response)!.AccessToken;
         }
 
         public async Task<BlizzardRealmResponse> GetZuljinData()
@@ -44,7 +44,7 @@ namespace dev_refined.Clients
             using var httpResponse = await client.SendAsync(request);
             var response = await httpResponse.Content.ReadAsStringAsync();
 
-            return JsonConvert.DeserializeObject<BlizzardRealmResponse>(response);
+            return JsonConvert.DeserializeObject<BlizzardRealmResponse>(response)!;
         }
 
         public async Task<BlizzardRealmsResponse> GetRealms()
@@ -60,7 +60,7 @@ namespace dev_refined.Clients
 
             var realmList = JsonConvert.DeserializeObject<BlizzardRealmsResponse>(response);
 
-            return realmList;
+            return realmList!;
         }
 
         public async Task<string> GetItemName(string itemId)
@@ -74,7 +74,7 @@ namespace dev_refined.Clients
             using var httpResponse = await client.SendAsync(request);
             var response = await httpResponse.Content.ReadAsStringAsync();
 
-            return JsonConvert.DeserializeObject<JObject>(response)["name"].ToString();
+            return JsonConvert.DeserializeObject<JObject>(response)?["name"]?.ToString() ?? string.Empty;
         }
 
         public async Task GetAuctions(BlizzardRealmsResponse realmData)
@@ -92,9 +92,9 @@ namespace dev_refined.Clients
                 using var httpResponse = await client.SendAsync(request);
                 var response = await httpResponse.Content.ReadAsStringAsync();
 
-                var auctions = JsonConvert.DeserializeObject<BlizzardAuctionResponse>(response);
+                var auctions = JsonConvert.DeserializeObject<BlizzardAuctionResponse>(response)!;
 
-                rings.AddRange(auctions.Auctions.Where(a => a.Item.Id == "238036" && a.Item.BonusLists.Contains(10355)));
+                rings.AddRange(auctions.Auctions.Where(a => a.Item?.Id == "238036" && a.Item?.BonusLists.Contains(10355) == true));
 
             }
 

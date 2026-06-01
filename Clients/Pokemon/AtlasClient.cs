@@ -7,64 +7,125 @@ namespace dev_library.Clients
     public class AtlasClient
     {
         private static readonly HttpClient client = new();
-        private static readonly string AtlasSearchUrl = "https://www.atlascollectables.com/catalog/pokemon-pokemon_sealed_products-pokemon_booster_boxes/386?filter_by_stock=in-stock";
+        private static readonly (string Url, string Category)[] AtlasPokemonDefaults =
+        [
+            ("https://www.atlascollectables.com/catalog/pokemon-pokemon_sealed_products-pokemon_booster_boxes/386?filter_by_stock=in-stock", "Booster Boxes"),
+        ];
+        private static readonly (string Url, string Category)[] AtlasGundamDefaults =
+        [
+            ("https://www.atlascollectables.com/catalog/gundam_card_game-gundam_card_game__sealed-gundam_card_game__booster_boxes/16227?filter_by_stock=in-stock", "Booster Boxes"),
+        ];
         private static readonly string AtlasBaseUrl = "https://www.atlascollectables.com";
-        private static readonly List<string> Keywords = new()
+        private readonly ITcgSourceUrlRepository? _sourceUrlRepo;
+
+        public AtlasClient(ITcgSourceUrlRepository? sourceUrlRepo = null)
         {
-            "Pokemon Booster Boxes",
-        };
+            _sourceUrlRepo = sourceUrlRepo;
+        }
+
+        private (string Url, string Category)[] GetCatalogs(string game, (string Url, string Category)[] defaults)
+        {
+            if (_sourceUrlRepo == null) return defaults;
+            var configured = _sourceUrlRepo
+                .GetAll(game, "Atlas", enabledOnly: true)
+                .Select(x => (x.Url, string.IsNullOrWhiteSpace(x.Category) ? "Booster Boxes" : x.Category.Trim()))
+                .ToArray();
+            return configured.Length > 0 ? configured : defaults;
+        }
+
+        private static void EnsureHeaders()
+        {
+            if (!client.DefaultRequestHeaders.Contains("User-Agent"))
+                client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
+        }
+
+        private async Task<List<Product>> FetchProducts(string searchUrl, string logPrefix)
+        {
+            var allProducts = new List<Product>();
+            EnsureHeaders();
+
+            var content = await client.GetStringAsync(searchUrl);
+            var doc = new HtmlDocument();
+            doc.LoadHtml(content);
+
+            var products = doc.DocumentNode.SelectNodes("//li[contains(@class, 'product')]");
+            if (products == null || products.Count == 0)
+            {
+                Log.Information("{LogPrefix}: No products found", logPrefix);
+                return allProducts;
+            }
+
+            foreach (var product in products)
+            {
+                var nameNode = product.SelectSingleNode(".//h4[contains(@class, 'name')]");
+                var priceNode = product.SelectSingleNode(".//div[contains(@class, 'product-price-qty')]//span[contains(@class, 'price')]");
+                var linkNode = product.SelectSingleNode(".//a[@itemprop='url']");
+                if (nameNode == null || priceNode == null || linkNode == null) continue;
+
+                var name = nameNode.InnerText.Trim();
+                var price = priceNode.InnerText.Trim();
+                var href = linkNode.GetAttributeValue("href", "");
+                var url = href.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                    ? href
+                    : AtlasBaseUrl + href;
+
+                allProducts.Add(new Product(name, price[4..], url));
+            }
+
+            Log.Information("{LogPrefix}: {Count} products found", logPrefix, products.Count);
+            return allProducts;
+        }
 
         public async Task<List<Search>> GetPokemon()
         {
-            Log.Information("AtlasClient.GetProducts: START");
-            var searchList = new List<Search>();
-            if (!client.DefaultRequestHeaders.Contains("User-Agent"))
-                client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
+            Log.Information("AtlasClient.GetPokemon: START");
+            var results = new List<Search>();
 
             try
             {
-                foreach (var keyword in Keywords)
+                foreach (var (url, category) in GetCatalogs("pokemon", AtlasPokemonDefaults))
                 {
-                    var content = await client.GetStringAsync(AtlasSearchUrl);
-                    var doc = new HtmlDocument();
-                    doc.LoadHtml(content);
-
-                    var products = doc.DocumentNode.SelectNodes("//li[contains(@class, 'product')]");
-                    var inStockProducts = new List<Product>();
-
-                    if (products == null || products.Count == 0)
-                    {
-                        Log.Information("No {Keyword} found", keyword);
-                        continue;
-                    }
-
-                    foreach (var product in products)
-                    {
-                        var name = product.SelectSingleNode(".//h4[contains(@class, 'name')]").InnerText.Trim();
-                        var price = product.SelectSingleNode(".//div[contains(@class, 'product-price-qty')]//span[contains(@class, 'price')]").InnerText.Trim();
-                        var url = AtlasBaseUrl + product.SelectSingleNode(".//a[@itemprop='url']").GetAttributeValue("href", "");
-
-                        inStockProducts.Add(new Product(name, price[4..], url));
-                    }
-
-                    if (inStockProducts.Count > 0)
-                    {
-                        searchList.Add(new Search(keyword, "Atlas", inStockProducts));
-                    }
-
-                    Log.Information("AtlasClient.GetProducts: Found {Total} {Keyword} products with {InStock} in stock", products.Count, keyword, inStockProducts.Count);
-                    await Task.Delay(5000);
+                    var products = await FetchProducts(url, "AtlasClient.GetPokemon");
+                    if (products.Count > 0)
+                        results.Add(new Search(category, "Atlas", products));
                 }
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "AtlasClient.GetProducts: Error fetching webpage");
+                Log.Error(ex, "AtlasClient.GetPokemon: Error fetching webpage");
             }
             finally
             {
-                Log.Information("AtlasClient.GetProducts: END");
+                Log.Information("AtlasClient.GetPokemon: END — {Count} total products", results.Sum(r => r.Products.Count));
             }
-            return searchList;
+
+            return results;
+        }
+
+        public async Task<List<Search>> GetGundam()
+        {
+            Log.Information("AtlasClient.GetGundam: START");
+            var results = new List<Search>();
+
+            try
+            {
+                foreach (var (url, category) in GetCatalogs("gundam", AtlasGundamDefaults))
+                {
+                    var products = await FetchProducts(url, "AtlasClient.GetGundam");
+                    if (products.Count > 0)
+                        results.Add(new Search(category, "Atlas", products));
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "AtlasClient.GetGundam: Error fetching webpage");
+            }
+            finally
+            {
+                Log.Information("AtlasClient.GetGundam: END — {Count} total products", results.Sum(r => r.Products.Count));
+            }
+
+            return results;
         }
     }
 }

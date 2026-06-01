@@ -9,6 +9,8 @@
             public const string DroptimizerReminder = "droptimizer_reminder";
             public const string ServerAvailability  = "server_availability";
             public const string KeyAudit            = "key_audit";
+            public const string PokemonTcg          = "pokemon_tcg";
+            public const string GundamTcg           = "gundam_tcg";
         }
 
         public static class GoogleHealth

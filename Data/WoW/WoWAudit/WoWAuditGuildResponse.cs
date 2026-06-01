@@ -5,25 +5,25 @@ namespace dev_refined.Data
     public class Character
     {
         [JsonProperty("name")]
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
 
         [JsonProperty("race")]
-        public string Race { get; set; }
+        public string Race { get; set; } = string.Empty;
 
         [JsonProperty("class")]
-        public string Class { get; set; }
+        public string Class { get; set; } = string.Empty;
 
         [JsonProperty("active_spec_name")]
-        public string ActiveSpecName { get; set; }
+        public string ActiveSpecName { get; set; } = string.Empty;
 
         [JsonProperty("active_spec_role")]
-        public string ActiveSpecRole { get; set; }
+        public string ActiveSpecRole { get; set; } = string.Empty;
 
         [JsonProperty("gender")]
-        public string Gender { get; set; }
+        public string Gender { get; set; } = string.Empty;
 
         [JsonProperty("faction")]
-        public string Faction { get; set; }
+        public string Faction { get; set; } = string.Empty;
 
         [JsonProperty("achievement_points")]
         public int AchievementPoints { get; set; }
@@ -32,19 +32,19 @@ namespace dev_refined.Data
         public int HonorableKills { get; set; }
 
         [JsonProperty("region")]
-        public string Region { get; set; }
+        public string Region { get; set; } = string.Empty;
 
         [JsonProperty("realm")]
-        public string Realm { get; set; }
+        public string Realm { get; set; } = string.Empty;
 
         [JsonProperty("last_crawled_at")]
         public DateTime LastCrawledAt { get; set; }
 
         [JsonProperty("profile_url")]
-        public string ProfileUrl { get; set; }
+        public string ProfileUrl { get; set; } = string.Empty;
 
         [JsonProperty("profile_banner")]
-        public string ProfileBanner { get; set; }
+        public string ProfileBanner { get; set; } = string.Empty;
     }
 
     public class Member
@@ -53,31 +53,31 @@ namespace dev_refined.Data
         public int Rank { get; set; }
 
         [JsonProperty("character")]
-        public Character Character { get; set; }
+        public Character Character { get; set; } = new();
     }
 
     public class WoWAuditGuildResponse
     {
         [JsonProperty("name")]
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
 
         [JsonProperty("faction")]
-        public string Faction { get; set; }
+        public string Faction { get; set; } = string.Empty;
 
         [JsonProperty("region")]
-        public string Region { get; set; }
+        public string Region { get; set; } = string.Empty;
 
         [JsonProperty("realm")]
-        public string Realm { get; set; }
+        public string Realm { get; set; } = string.Empty;
 
         [JsonProperty("last_crawled_at")]
         public DateTime LastCrawledAt { get; set; }
 
         [JsonProperty("profile_url")]
-        public string ProfileUrl { get; set; }
+        public string ProfileUrl { get; set; } = string.Empty;
 
         [JsonProperty("members")]
-        public List<Member> Members { get; set; }
+        public List<Member> Members { get; set; } = new();
     }
 
 }

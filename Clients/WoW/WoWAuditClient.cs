@@ -23,12 +23,12 @@ namespace dev_refined.Clients
                 using var request = new HttpRequestMessage(new HttpMethod("GET"), $"{Constants.WoW.WoWAudit.Url}/characters");
 
                 request.Headers.TryAddWithoutValidation("accept", "application/json");
-                request.Headers.TryAddWithoutValidation("Authorization", AppSettings.Guilds.First(g => g.Name == guild.ToUpper()).Droptimizer.Token);
+                request.Headers.TryAddWithoutValidation("Authorization", AppSettings.Guilds.First(g => g.Name == guild.ToUpper()).Droptimizer?.Token ?? string.Empty);
 
                 using var httpResponse = await client.SendAsync(request);
                 var response = await httpResponse.Content.ReadAsStringAsync();
 
-                var guildies = JsonConvert.DeserializeObject<List<WoWAuditCharacter>>(response);
+                var guildies = JsonConvert.DeserializeObject<List<WoWAuditCharacter>>(response)!;
 
                 Log.Information("WoWAuditClient.GetCharacters: found {Count}", guildies.Count);
                 Log.Information("WoWAuditClient.GetCharacters: END");
@@ -48,11 +48,11 @@ namespace dev_refined.Clients
             try
             {
                 using var client = _httpClientFactory.CreateClient();
-                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", AppSettings.Guilds.First(g => g.Name == guild.ToUpper()).Droptimizer.Token);
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", AppSettings.Guilds.First(g => g.Name == guild.ToUpper()).Droptimizer?.Token ?? string.Empty);
                 var requestBody = new StringContent(JsonConvert.SerializeObject(new WoWAuditWishlistRequest(reportId)), Encoding.UTF8, ContentType.Json);
                 using var httpResponse = await client.PostAsync($"{Constants.WoW.WoWAudit.Url}/wishlists", requestBody);
                 response = await httpResponse.Content.ReadAsStringAsync();
-                return JsonConvert.DeserializeObject<WoWAuditWishlistResponse>(response);
+                return JsonConvert.DeserializeObject<WoWAuditWishlistResponse>(response)!;
             }
             catch (Exception ex)
             {

@@ -21,7 +21,7 @@ namespace dev_refined
             var fileLocation = $"{AppSettings.BasePath}/realmcache.json";
 
             var realmData = await _battleNetClient.GetZuljinData();
-            var cachedData = JsonConvert.DeserializeObject<BlizzardRealmResponse>(File.ReadAllText(fileLocation));
+            var cachedData = JsonConvert.DeserializeObject<BlizzardRealmResponse>(File.ReadAllText(fileLocation))!;
 
             File.WriteAllText(fileLocation, JsonConvert.SerializeObject(realmData));
 

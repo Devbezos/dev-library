@@ -32,7 +32,7 @@ namespace dev_refined.Clients
                 $"{Constants.WoW.WoWUtils.BaseUrl}/api/droptimizer/fetch?reportId={reportId}&file=report");
             var result = JsonConvert.DeserializeObject<WoWUtilsFetchResponse>(json);
             Log.Information("WoWUtilsClient.GetDroptimizerReport: END");
-            return result;
+            return result!;
         }
 
         /// <summary>
@@ -71,7 +71,7 @@ namespace dev_refined.Clients
             if (!response.IsSuccessStatusCode)
                 throw new HttpRequestException($"WoW Utils import failed ({(int)response.StatusCode}): {responseJson}");
 
-            return JsonConvert.DeserializeObject<WoWUtilsImportResponse>(responseJson);
+            return JsonConvert.DeserializeObject<WoWUtilsImportResponse>(responseJson)!;
         }
 
         /// <summary>
@@ -96,12 +96,12 @@ namespace dev_refined.Clients
 
         // ── Private helpers ──────────────────────────────────────────────
 
-        private static (string name, string realm, string characterClass, string spec) ParseSimcCharacter(string simcText)
+        private static (string? name, string? realm, string? characterClass, string? spec) ParseSimcCharacter(string? simcText)
         {
             if (string.IsNullOrEmpty(simcText))
                 return (null, null, null, null);
 
-            string name = null, realm = null, characterClass = null, spec = null;
+            string? name = null, realm = null, characterClass = null, spec = null;
 
             foreach (var line in simcText.Split('\n'))
             {
@@ -131,14 +131,14 @@ namespace dev_refined.Clients
             return (name, realm, characterClass, spec);
         }
 
-        private static string ParseRealm(string simcText)
+        private static string? ParseRealm(string? simcText)
         {
             if (string.IsNullOrEmpty(simcText)) return null;
             var m = Regex.Match(simcText, @"^server=(\S+)", RegexOptions.Multiline);
             return m.Success ? m.Groups[1].Value : null;
         }
 
-        private HttpClient BuildHttpClient(string sessionCookie = null)
+        private HttpClient BuildHttpClient(string? sessionCookie = null)
         {
             var client = _httpClientFactory.CreateClient();
             client.DefaultRequestHeaders.Add("User-Agent",

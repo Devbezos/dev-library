@@ -39,8 +39,8 @@ namespace dev_library.Clients
                         var availabilityNode = product.SelectSingleNode(".//div[contains(@class, 'product-image-oos--Lae0t')]");
 
                         // Extract values
-                        string name = nameNode?.InnerText.Trim();
-                        string price = priceNode?.InnerText.Trim();
+                        string? name = nameNode?.InnerText.Trim();
+                        string? price = priceNode?.InnerText.Trim();
                         string test = availabilityNode != null ? "Out of Stock" : "In Stock";
 
                         if (nameNode != null && priceNode != null)

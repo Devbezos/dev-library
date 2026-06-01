@@ -23,7 +23,7 @@ namespace dev_refined.Clients
             var keyResponse = JsonConvert.DeserializeObject<RaiderIoKeyResponse>(response);
 
             Log.Information("RaiderIoClient.GetWeeklyKeyHistory: END");
-            return keyResponse;
+            return keyResponse!;
         }
     }
 }

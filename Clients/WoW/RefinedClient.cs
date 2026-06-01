@@ -34,13 +34,13 @@ namespace dev_refined
                     Log.Information($"RefinedClient.PostBadPlayers: Getting key info for {guildy.Name}");
 
                     var weeklyKeys = await _raiderIoClient.GetWeeklyKeyHistory(guildy);
-                    var maxKeyCount = weeklyKeys?.MythicPlusWeeklyHighestLevelRuns.Count(k => k.MythicLevel >= Constants.WoW.MaxKeyLevel) ?? 0;
+                    var maxKeyCount = weeklyKeys?.MythicPlusWeeklyHighestLevelRuns?.Count(k => k.MythicLevel >= Constants.WoW.MaxKeyLevel) ?? 0;
 
                     Log.Information($"RefinedClient.PostBadPlayers: {guildy.Name} performed {maxKeyCount} +{Constants.WoW.MaxKeyLevel}s this week");
 
                     if (maxKeyCount < 8)
                     {
-                        badPlayers.Add(new BadPlayer(guildy.Name, 8 - maxKeyCount, decimal.Round(weeklyKeys.Gear.ItemLevel).ToString()));
+                        badPlayers.Add(new BadPlayer(guildy.Name, 8 - maxKeyCount, decimal.Round(weeklyKeys?.Gear.ItemLevel ?? 0m).ToString()));
                     }
                 }
 
@@ -62,7 +62,7 @@ namespace dev_refined
                     props = badPlayer.GetType().GetProperties();
                     for (int i = 0; i < props.Length; i++)
                     {
-                        table += $"|{props[i].GetValue(badPlayer).ToString().PadBoth(paddingArray[i], ' ')}";
+                        table += $"|{(props[i].GetValue(badPlayer)?.ToString() ?? string.Empty).PadBoth(paddingArray[i], ' ')}";
                     }
 
                     table += "|";

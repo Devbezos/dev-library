@@ -9,25 +9,25 @@ namespace dev_refined.Data
         public int Id { get; set; }
 
         [JsonProperty("name")]
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
 
         [JsonProperty("description")]
-        public string Description { get; set; }
+        public string Description { get; set; } = string.Empty;
 
         [JsonProperty("icon")]
-        public string Icon { get; set; }
+        public string Icon { get; set; } = string.Empty;
 
         [JsonProperty("wowhead_url")]
-        public string WowheadUrl { get; set; }
+        public string WowheadUrl { get; set; } = string.Empty;
     }
 
     public class MythicPlusWeeklyHighestLevelRun
     {
         [JsonProperty("dungeon")]
-        public string Dungeon { get; set; }
+        public string Dungeon { get; set; } = string.Empty;
 
         [JsonProperty("short_name")]
-        public string ShortName { get; set; }
+        public string ShortName { get; set; } = string.Empty;
 
         [JsonProperty("mythic_level")]
         public int MythicLevel { get; set; }
@@ -54,34 +54,34 @@ namespace dev_refined.Data
         public decimal Score { get; set; }
 
         [JsonProperty("affixes")]
-        public List<Affix> Affixes { get; set; }
+        public List<Affix> Affixes { get; set; } = new();
 
         [JsonProperty("url")]
-        public string Url { get; set; }
+        public string Url { get; set; } = string.Empty;
     }
 
     public class RaiderIoKeyResponse
     {
         [JsonProperty("name")]
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
 
         [JsonProperty("race")]
-        public string Race { get; set; }
+        public string Race { get; set; } = string.Empty;
 
         [JsonProperty("class")]
-        public string Class { get; set; }
+        public string Class { get; set; } = string.Empty;
 
         [JsonProperty("active_spec_name")]
-        public string ActiveSpecName { get; set; }
+        public string ActiveSpecName { get; set; } = string.Empty;
 
         [JsonProperty("active_spec_role")]
-        public string ActiveSpecRole { get; set; }
+        public string ActiveSpecRole { get; set; } = string.Empty;
 
         [JsonProperty("gender")]
-        public string Gender { get; set; }
+        public string Gender { get; set; } = string.Empty;
 
         [JsonProperty("faction")]
-        public string Faction { get; set; }
+        public string Faction { get; set; } = string.Empty;
 
         [JsonProperty("achievement_points")]
         public int AchievementPoints { get; set; }
@@ -90,28 +90,28 @@ namespace dev_refined.Data
         public int HonorableKills { get; set; }
 
         [JsonProperty("thumbnail_url")]
-        public string ThumbnailUrl { get; set; }
+        public string ThumbnailUrl { get; set; } = string.Empty;
 
         [JsonProperty("region")]
-        public string Region { get; set; }
+        public string Region { get; set; } = string.Empty;
 
         [JsonProperty("realm")]
-        public string Realm { get; set; }
+        public string Realm { get; set; } = string.Empty;
 
         [JsonProperty("last_crawled_at")]
         public DateTime LastCrawledAt { get; set; }
 
         [JsonProperty("profile_url")]
-        public string ProfileUrl { get; set; }
+        public string ProfileUrl { get; set; } = string.Empty;
 
         [JsonProperty("profile_banner")]
-        public string ProfileBanner { get; set; }
+        public string ProfileBanner { get; set; } = string.Empty;
 
         [JsonProperty("mythic_plus_weekly_highest_level_runs")]
-        public List<MythicPlusWeeklyHighestLevelRun> MythicPlusWeeklyHighestLevelRuns { get; set; }
+        public List<MythicPlusWeeklyHighestLevelRun> MythicPlusWeeklyHighestLevelRuns { get; set; } = new();
 
         [JsonProperty("gear")]
-        public Gear Gear { get; set; }
+        public Gear Gear { get; set; } = new();
     }
 
     public class Gear
