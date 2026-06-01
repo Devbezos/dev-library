@@ -13,5 +13,6 @@ namespace dev_refined.Clients
         Task<List<TrackedApplication>> CheckNewApplications(GoogleSheetsClient sheetsClient);
         Task SendDroptimizerReminders(DateTime now);
         Task PostWebHook(ulong channelId, List<Search> searchResults);
+        Task SendDirectMessage(ulong userId, string message);
     }
 }

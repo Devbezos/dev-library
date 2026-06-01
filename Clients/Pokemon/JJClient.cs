@@ -6,106 +6,90 @@ using System.Text.RegularExpressions;
 
 namespace dev_library.Clients
 {
-
     public class JJClient
     {
-        private static readonly string jjSearchUrl = "https://shop.jjcards.com/search.asp?keyword=pokemon+booster+box&catid=";
-        private static readonly string jjBaseUrl = "https://shop.jjcards.com";
-        private static readonly string jjAddToCartUrl = "https://shop.jjcards.com/add_cart.asp?quick=1&item_id={0}&cat_id=0";
+        private const string JjSearchUrl = "https://shop.jjcards.com/search.asp?keyword=pokemon+booster+box&catid=";
+        private const string JjBaseUrl = "https://shop.jjcards.com";
+        private const string JjAddToCartUrl = "https://shop.jjcards.com/add_cart.asp?quick=1&item_id={0}&cat_id=0";
+        private readonly PlaywrightBrowser? _browser;
+
+        public JJClient(PlaywrightBrowser? browser = null)
+        {
+            _browser = browser;
+        }
 
         public async Task<List<Search>> GetProducts()
         {
+            if (_browser != null)
+                return await GetProducts(_browser);
+
+            await using var browser = await PlaywrightBrowser.CreateAsync();
+            return await GetProducts(browser);
+        }
+
+        private async Task<List<Search>> GetProducts(PlaywrightBrowser browser)
+        {
             Log.Information("JJClient.GetProducts: START");
-            var searchList = new List<Search>();
 
-            using var playwright = await Playwright.CreateAsync();
-            await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
+            var inStockProducts = await browser.WithPageAsync(async page =>
             {
-                Headless = true,
-            });
-
-            var context = await browser.NewContextAsync(new BrowserNewContextOptions
-            {
-                UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                ExtraHTTPHeaders = new Dictionary<string, string>
+                var productsFound = 0;
+                var products = new List<Product>();
+                try
                 {
-                    ["Accept-Language"] = "en-CA,en-US;q=0.9,en;q=0.8",
-                }
-            });
-
-            var page = await context.NewPageAsync();
-
-            // Abort heavy asset requests; HTML still includes product nodes.
-            await page.RouteAsync("**/*", async route =>
-            {
-                var type = route.Request.ResourceType;
-                if (type is "image" or "media" or "font")
-                    await route.AbortAsync();
-                else
-                    await route.ContinueAsync();
-            });
-
-            try
-            {
-                var response = await page.GotoAsync(jjSearchUrl, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 30000 });
-                if (response != null && response.Status >= 400)
-                {
-                    Log.Warning("JJClient.GetProducts: search page returned HTTP {Status}", response.Status);
-                    return searchList;
-                }
-
-                string content = await page.ContentAsync();
-                var doc = new HtmlDocument();
-                doc.LoadHtml(content);
-
-                var products = doc.DocumentNode.SelectNodes("//div[contains(@class, 'product-content')]");
-                var inStockProducts = new List<Product>();
-
-                if (products == null || products.Count == 0)
-                {
-                    Log.Information("JJClient.GetProducts: No products found");
-                    return searchList;
-                }
-
-                foreach (var product in products)
-                {
-                    var nameNode = product.SelectSingleNode(".//a");
-                    var priceNode = product.SelectSingleNode(".//span[contains(@class, 'price')]");
-                    var availabilityNode = product.SelectSingleNode(".//span[contains(@class, 'availability')]");
-
-                    if (nameNode == null || priceNode == null || availabilityNode == null) continue;
-
-                    string productName = nameNode.InnerText.Trim();
-                    var baseUrl = nameNode.Attributes["href"]?.Value ?? "";
-                    var itemId = Regex.Match(baseUrl, @"_(\d+)\.html$");
-                    var url = itemId.Success
-                        ? string.Format(jjAddToCartUrl, itemId.Groups[1].Value)
-                        : (baseUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? baseUrl : jjBaseUrl + baseUrl);
-                    string productPrice = priceNode.InnerText.Trim();
-                    string availability = availabilityNode.InnerText.Trim();
-
-                    if (availability.Equals("IN STOCK.", StringComparison.OrdinalIgnoreCase))
+                    var response = await page.GotoAsync(JjSearchUrl, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 30000 });
+                    if (response != null && response.Status >= 400)
                     {
-                        inStockProducts.Add(new Product(productName, productPrice, url));
+                        Log.Warning("JJClient.GetProducts: search page returned HTTP {Status}", response.Status);
+                        return products;
+                    }
+
+                    var content = await page.ContentAsync();
+                    var doc = new HtmlDocument();
+                    doc.LoadHtml(content);
+
+                    var nodes = doc.DocumentNode.SelectNodes("//div[contains(@class, 'product-content')]");
+                    if (nodes == null || nodes.Count == 0)
+                    {
+                        Log.Information("JJClient.GetProducts: No products found");
+                        return products;
+                    }
+
+                    productsFound = nodes.Count;
+                    foreach (var product in nodes)
+                    {
+                        var nameNode = product.SelectSingleNode(".//a");
+                        var priceNode = product.SelectSingleNode(".//span[contains(@class, 'price')]");
+                        var availabilityNode = product.SelectSingleNode(".//span[contains(@class, 'availability')]");
+
+                        if (nameNode == null || priceNode == null || availabilityNode == null) continue;
+
+                        var productName = nameNode.InnerText.Trim();
+                        var baseUrl = nameNode.Attributes["href"]?.Value ?? "";
+                        var itemId = Regex.Match(baseUrl, @"_(\d+)\.html$");
+                        var url = itemId.Success
+                            ? string.Format(JjAddToCartUrl, itemId.Groups[1].Value)
+                            : (baseUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? baseUrl : JjBaseUrl + baseUrl);
+                        var productPrice = priceNode.InnerText.Trim();
+                        var availability = availabilityNode.InnerText.Trim();
+
+                        if (availability.Equals("IN STOCK.", StringComparison.OrdinalIgnoreCase))
+                            products.Add(new Product(productName, productPrice, url));
                     }
                 }
-
-                if (inStockProducts.Count > 0)
+                catch (Exception ex)
                 {
-                    searchList.Add(new Search("Pokemon", "JJ", inStockProducts));
+                    Log.Error(ex, "JJClient.GetProducts: Error fetching webpage");
                 }
 
-                Log.Information("JJClient.GetProducts: Found {Total} products with {InStock} in stock", products.Count, inStockProducts.Count);
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "JJClient.GetProducts: Error fetching webpage");
-            }
-            finally
-            {
-                Log.Information("JJClient.GetProducts: END");
-            }
-            return searchList;
+                Log.Information("JJClient.GetProducts: Found {Total} products with {InStock} in stock", productsFound, products.Count);
+                return products;
+            });
+
+            Log.Information("JJClient.GetProducts: END");
+            return inStockProducts.Count > 0
+                ? new List<Search> { new Search("Pokemon", "JJ", inStockProducts) }
+                : new List<Search>();
         }
     }
 }

@@ -14,8 +14,6 @@ namespace dev_library.Data
         public static MySqlSettings MySql { get; set; } = new();
         public static WarcraftLogsSettings? WarcraftLogs { get; set; }
         public static GoogleHealthUserSettings[] GoogleHealth { get; set; } = Array.Empty<GoogleHealthUserSettings>();
-        public static PokemonTcgSettings PokemonTcg { get; set; } = new();
-        public static GundamTcgSettings GundamTcg { get; set; } = new();
 
         public static void Initialize()
         {
@@ -32,8 +30,6 @@ namespace dev_library.Data
             MySql = config.GetSection("mySql").Get<MySqlSettings>() ?? new MySqlSettings();
             WarcraftLogs = config.GetSection("warcraftLogs").Get<WarcraftLogsSettings>();
             GoogleHealth = config.GetSection("googleHealth").Get<GoogleHealthUserSettings[]>() ?? Array.Empty<GoogleHealthUserSettings>();
-            PokemonTcg = config.GetSection("pokemonTcg").Get<PokemonTcgSettings>() ?? new PokemonTcgSettings();
-            GundamTcg  = config.GetSection("gundamTcg").Get<GundamTcgSettings>()  ?? new GundamTcgSettings();
         }
     }
 
@@ -123,16 +119,6 @@ namespace dev_library.Data
     {
         public int Id { get; set; }
         public required string Name { get; set; }
-    }
-
-    public class PokemonTcgSettings
-    {
-        public ulong ChannelId { get; set; }
-    }
-
-    public class GundamTcgSettings
-    {
-        public ulong ChannelId { get; set; }
     }
 
     public class GoogleHealthUserSettings

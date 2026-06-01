@@ -21,8 +21,10 @@ namespace dev_library
             services.AddSingleton<ITcgRepository>(_ => new TcgRepository(connectionString));
             services.AddSingleton<ITcgSourceUrlRepository>(_ => new TcgSourceUrlRepository(connectionString));
             services.AddSingleton<ITcgHiddenItemRepository>(_ => new TcgHiddenItemRepository(connectionString));
+            services.AddSingleton<ITcgBlacklistWordRepository>(_ => new TcgBlacklistWordRepository(connectionString));
             services.AddSingleton<ITcgChannelSettingsRepository>(_ => new TcgChannelSettingsRepository(connectionString));
             services.AddSingleton<ITcgFilterSettingsRepository>(_ => new TcgFilterSettingsRepository(connectionString));
+            services.AddSingleton<ITcgProductGroupRepository>(_ => new TcgProductGroupRepository(connectionString));
             return services;
         }
 

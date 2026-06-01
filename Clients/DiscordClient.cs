@@ -21,6 +21,7 @@ namespace dev_refined.Clients
         public static Func<ulong, string, Task<ulong>>? CreateApplicationChannelAsync { get; set; }
         public static Func<ulong, Embed, Task<ulong>>? SendEmbedWithIdAsync { get; set; }
         public static Func<ulong, ulong, Task>? PinMessageAsync { get; set; }
+        public static Func<ulong, string, Task>? SendDirectMessageAsync { get; set; }
         private static readonly ConcurrentDictionary<ulong, ulong[]> _tcgMessageIdsByChannel = new();
 
         public async Task PostToChannel(ulong channelId, string message)
@@ -45,6 +46,18 @@ namespace dev_refined.Clients
                 Log.Warning("DiscordClient.PostEmbed: SendEmbedAsync not wired up. Title: {Title}", embed.Title);
 
             Log.Information("DiscordClient.PostEmbed: END");
+        }
+
+        public async Task SendDirectMessage(ulong userId, string message)
+        {
+            Log.Information("DiscordClient.SendDirectMessage: START");
+
+            if (SendDirectMessageAsync != null)
+                await SendDirectMessageAsync(userId, message);
+            else
+                Log.Warning("DiscordClient.SendDirectMessage: SendDirectMessageAsync not wired up. UserId: {UserId}", userId);
+
+            Log.Information("DiscordClient.SendDirectMessage: END");
         }
 
         public async Task<(ulong channelId, string channelName, ulong[] messageIds)> PostApplication(ulong channelId, ulong officerChannelId, GuildApplication app)
