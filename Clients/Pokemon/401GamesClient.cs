@@ -9,7 +9,7 @@ namespace dev_library.Clients
     public class _401GamesClient
     {
         private static readonly ILogger Logger = Log.ForContext<_401GamesClient>();
-        private static readonly HttpClient client = new();
+        private static readonly HttpClient client = new(new HttpClientHandler { UseCookies = false });
         private static readonly (string Url, string Category)[] DefaultUrls =
         [
             ("https://store.401games.ca/collections/pokemon-trading-cards?sort=price_max_to_min&filters=Product+Type,Product+Type_Booster+Boxes,Price_from_to,66-400,In+Stock,True", "Booster Boxes"),
