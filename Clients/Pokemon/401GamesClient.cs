@@ -10,6 +10,7 @@ namespace dev_library.Clients
     {
         private static readonly ILogger Logger = Log.ForContext<_401GamesClient>();
         private static readonly HttpClient client = new(new HttpClientHandler { UseCookies = false });
+        private const string UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
         private static readonly (string Url, string Category)[] DefaultUrls =
         [
             ("https://store.401games.ca/collections/pokemon-trading-cards?sort=price_max_to_min&filters=Product+Type,Product+Type_Booster+Boxes,Price_from_to,66-400,In+Stock,True", "Booster Boxes"),
@@ -17,6 +18,13 @@ namespace dev_library.Clients
         ];
         private static readonly string _401BaseUrl = "https://store.401games.ca";
         private readonly ITcgSourceUrlRepository? _sourceUrlRepo;
+
+        static _401GamesClient()
+        {
+            // DefaultRequestHeaders is not safe to mutate during concurrent sends.
+            // Configure it once up-front to avoid races under parallel API requests.
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
+        }
 
         public _401GamesClient(ITcgSourceUrlRepository? sourceUrlRepo = null)
         {
@@ -74,9 +82,6 @@ namespace dev_library.Clients
         private static async Task<List<Product>> GetProductsFromSourceUrls(IEnumerable<(string Url, string Category)> sourceUrls, bool preferCollectionJson = false)
         {
             var allProducts = new List<Product>();
-
-            if (!client.DefaultRequestHeaders.Contains("User-Agent"))
-                client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
 
             foreach (var source in sourceUrls)
             {
