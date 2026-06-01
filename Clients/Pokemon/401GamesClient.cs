@@ -1,5 +1,6 @@
 ﻿using dev_library.Data;
 using HtmlAgilityPack;
+using Serilog;
 using System.Net;
 using System.Text.Json;
 
@@ -7,6 +8,7 @@ namespace dev_library.Clients
 {
     public class _401GamesClient
     {
+        private static readonly ILogger Logger = Log.ForContext<_401GamesClient>();
         private static readonly HttpClient client = new();
         private static readonly (string Url, string Category)[] DefaultUrls =
         [
@@ -86,7 +88,7 @@ namespace dev_library.Clients
                         if (jsonProducts != null)
                         {
                             allProducts.AddRange(jsonProducts);
-                            Console.WriteLine($"401Games {source.Category}: {jsonProducts.Count} products found with collection JSON");
+                            Logger.Information("{Category}: {Count} products found with collection JSON", source.Category, jsonProducts.Count);
                             continue;
                         }
                     }
@@ -98,7 +100,7 @@ namespace dev_library.Clients
                     var products = doc.DocumentNode.SelectNodes("//div[contains(@class, 'product-container')]");
                     if (products == null || products.Count == 0)
                     {
-                        Console.WriteLine($"401Games {source.Category}: No products found");
+                        Logger.Information("{Category}: No products found", source.Category);
                     }
                     else
                     {
@@ -118,12 +120,12 @@ namespace dev_library.Clients
                             allProducts.Add(new Product(name, price, url));
                             inStockCount++;
                         }
-                        Console.WriteLine($"401Games {source.Category}: {products.Count} products found with {inStockCount} in stock");
+                        Logger.Information("{Category}: {Count} products found with {InStockCount} in stock", source.Category, products.Count, inStockCount);
                     }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"401Games {source.Category}: Error fetching webpage: {ex.Message}");
+                    Logger.Error(ex, "{Category}: Error fetching webpage", source.Category);
                 }
             }
 

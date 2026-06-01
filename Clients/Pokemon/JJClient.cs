@@ -8,6 +8,7 @@ namespace dev_library.Clients
 {
     public class JJClient
     {
+        private static readonly ILogger Logger = Log.ForContext<JJClient>();
         private const string JjSearchUrl = "https://shop.jjcards.com/search.asp?keyword=pokemon+booster+box&catid=";
         private const string JjBaseUrl = "https://shop.jjcards.com";
         private const string JjAddToCartUrl = "https://shop.jjcards.com/add_cart.asp?quick=1&item_id={0}&cat_id=0";
@@ -29,7 +30,7 @@ namespace dev_library.Clients
 
         private async Task<List<Search>> GetProducts(PlaywrightBrowser browser)
         {
-            Log.Information("JJClient.GetProducts: START");
+            Logger.Information("GetProducts: START");
 
             var inStockProducts = await browser.WithPageAsync(async page =>
             {
@@ -40,7 +41,7 @@ namespace dev_library.Clients
                     var response = await page.GotoAsync(JjSearchUrl, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 30000 });
                     if (response != null && response.Status >= 400)
                     {
-                        Log.Warning("JJClient.GetProducts: search page returned HTTP {Status}", response.Status);
+                        Logger.Warning("GetProducts: search page returned HTTP {Status}", response.Status);
                         return products;
                     }
 
@@ -51,7 +52,7 @@ namespace dev_library.Clients
                     var nodes = doc.DocumentNode.SelectNodes("//div[contains(@class, 'product-content')]");
                     if (nodes == null || nodes.Count == 0)
                     {
-                        Log.Information("JJClient.GetProducts: No products found");
+                        Logger.Information("GetProducts: No products found");
                         return products;
                     }
 
@@ -79,14 +80,14 @@ namespace dev_library.Clients
                 }
                 catch (Exception ex)
                 {
-                    Log.Error(ex, "JJClient.GetProducts: Error fetching webpage");
+                    Logger.Error(ex, "GetProducts: Error fetching webpage");
                 }
 
-                Log.Information("JJClient.GetProducts: Found {Total} products with {InStock} in stock", productsFound, products.Count);
+                Logger.Information("GetProducts: Found {Total} products with {InStock} in stock", productsFound, products.Count);
                 return products;
             });
 
-            Log.Information("JJClient.GetProducts: END");
+            Logger.Information("GetProducts: END");
             return inStockProducts.Count > 0
                 ? new List<Search> { new Search("Pokemon", "JJ", inStockProducts) }
                 : new List<Search>();

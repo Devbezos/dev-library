@@ -6,6 +6,7 @@ namespace dev_library.Clients
 {
     public class AtlasClient
     {
+        private static readonly ILogger Logger = Log.ForContext<AtlasClient>();
         private static readonly HttpClient client = new();
         private static readonly (string Url, string Category)[] AtlasPokemonDefaults =
         [
@@ -51,7 +52,7 @@ namespace dev_library.Clients
             var products = doc.DocumentNode.SelectNodes("//li[contains(@class, 'product')]");
             if (products == null || products.Count == 0)
             {
-                Log.Information("{LogPrefix}: No products found", logPrefix);
+                Logger.Information("{LogPrefix}: No products found", logPrefix);
                 return allProducts;
             }
 
@@ -72,13 +73,13 @@ namespace dev_library.Clients
                 allProducts.Add(new Product(name, price[4..], url));
             }
 
-            Log.Information("{LogPrefix}: {Count} products found", logPrefix, products.Count);
+            Logger.Information("{LogPrefix}: {Count} products found", logPrefix, products.Count);
             return allProducts;
         }
 
         public async Task<List<Search>> GetPokemon()
         {
-            Log.Information("AtlasClient.GetPokemon: START");
+            Logger.Information("GetPokemon: START");
             var results = new List<Search>();
 
             try
@@ -92,11 +93,11 @@ namespace dev_library.Clients
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "AtlasClient.GetPokemon: Error fetching webpage");
+                Logger.Error(ex, "GetPokemon: Error fetching webpage");
             }
             finally
             {
-                Log.Information("AtlasClient.GetPokemon: END — {Count} total products", results.Sum(r => r.Products.Count));
+                Logger.Information("GetPokemon: END — {Count} total products", results.Sum(r => r.Products.Count));
             }
 
             return results;
@@ -104,7 +105,7 @@ namespace dev_library.Clients
 
         public async Task<List<Search>> GetGundam()
         {
-            Log.Information("AtlasClient.GetGundam: START");
+            Logger.Information("GetGundam: START");
             var results = new List<Search>();
 
             try
@@ -118,11 +119,11 @@ namespace dev_library.Clients
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "AtlasClient.GetGundam: Error fetching webpage");
+                Logger.Error(ex, "GetGundam: Error fetching webpage");
             }
             finally
             {
-                Log.Information("AtlasClient.GetGundam: END — {Count} total products", results.Sum(r => r.Products.Count));
+                Logger.Information("GetGundam: END — {Count} total products", results.Sum(r => r.Products.Count));
             }
 
             return results;

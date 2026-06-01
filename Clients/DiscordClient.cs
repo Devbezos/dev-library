@@ -11,6 +11,8 @@ namespace dev_refined.Clients
 {
     public class DiscordClient : IDiscordClient
     {
+        private static readonly ILogger Logger = Log.ForContext<DiscordClient>();
+
         public const string TcgMessageHeader = "TCG Stock Monitor";
         public static Func<ulong, string, Task>? SendMessageAsync { get; set; }
         public static Func<ulong, string, Task<ulong>>? SendMessageWithIdAsync { get; set; }
@@ -21,52 +23,39 @@ namespace dev_refined.Clients
         public static Func<ulong, string, Task<ulong>>? CreateApplicationChannelAsync { get; set; }
         public static Func<ulong, Embed, Task<ulong>>? SendEmbedWithIdAsync { get; set; }
         public static Func<ulong, ulong, Task>? PinMessageAsync { get; set; }
-        public static Func<ulong, string, Task>? SendDirectMessageAsync { get; set; }
         private static readonly ConcurrentDictionary<ulong, ulong[]> _tcgMessageIdsByChannel = new();
 
         public async Task PostToChannel(ulong channelId, string message)
         {
-            Log.Information("DiscordClient.PostToChannel: START");
+            Logger.Information("PostToChannel: START");
 
             if (SendMessageAsync != null)
                 await SendMessageAsync(channelId, message);
             else
-                Log.Warning("DiscordClient.PostToChannel: SendMessageAsync not wired up. Message: {Message}", message);
+                Logger.Warning("PostToChannel: SendMessageAsync not wired up. Message: {Message}", message);
 
-            Log.Information("DiscordClient.PostToChannel: END");
+            Logger.Information("PostToChannel: END");
         }
 
         public async Task PostEmbed(ulong channelId, Embed embed)
         {
-            Log.Information("DiscordClient.PostEmbed: START");
+            Logger.Information("PostEmbed: START");
 
             if (SendEmbedAsync != null)
                 await SendEmbedAsync(channelId, embed);
             else
-                Log.Warning("DiscordClient.PostEmbed: SendEmbedAsync not wired up. Title: {Title}", embed.Title);
+                Logger.Warning("PostEmbed: SendEmbedAsync not wired up. Title: {Title}", embed.Title);
 
-            Log.Information("DiscordClient.PostEmbed: END");
-        }
-
-        public async Task SendDirectMessage(ulong userId, string message)
-        {
-            Log.Information("DiscordClient.SendDirectMessage: START");
-
-            if (SendDirectMessageAsync != null)
-                await SendDirectMessageAsync(userId, message);
-            else
-                Log.Warning("DiscordClient.SendDirectMessage: SendDirectMessageAsync not wired up. UserId: {UserId}", userId);
-
-            Log.Information("DiscordClient.SendDirectMessage: END");
+            Logger.Information("PostEmbed: END");
         }
 
         public async Task<(ulong channelId, string channelName, ulong[] messageIds)> PostApplication(ulong channelId, ulong officerChannelId, GuildApplication app)
         {
-            Log.Information("DiscordClient.PostApplication: START");
+            Logger.Information("PostApplication: START");
 
             if (CreateApplicationChannelAsync == null || SendEmbedWithIdAsync == null)
             {
-                Log.Warning("DiscordClient.PostApplication: delegates not wired up");
+                Logger.Warning("PostApplication: delegates not wired up");
                 return (0, string.Empty, Array.Empty<ulong>());
             }
 
@@ -80,7 +69,7 @@ namespace dev_refined.Clients
             if (officerMessage != null)
                 await PostToChannel(officerChannelId, officerMessage);
 
-            Log.Information("DiscordClient.PostApplication: END");
+            Logger.Information("PostApplication: END");
             return (threadId, channelName, new[] { msgId });
         }
 
@@ -130,7 +119,7 @@ namespace dev_refined.Clients
 
         public async Task<List<TrackedApplication>> CheckNewApplications(GoogleSheetsClient sheetsClient)
         {
-            Log.Debug("DiscordClient.CheckNewApplications: START");
+            Logger.Debug("CheckNewApplications: START");
             var result = new List<TrackedApplication>();
             var guildsWithApps = AppSettings.Guilds.Where(g =>
                 g.ApplicationSheet != null &&
@@ -149,7 +138,7 @@ namespace dev_refined.Clients
 
                 foreach (var app in unposted)
                 {
-                    Log.Information("DiscordClient.CheckNewApplications: Posting application row {Row} from {Contact}", app.RowIndex, app.ContactInfo);
+                    Logger.Information("CheckNewApplications: Posting application row {Row} from {Contact}", app.RowIndex, app.ContactInfo);
                     var (channelId, channelName, messageIds) = await PostApplication(categoryId, officerChannelId, app);
                     foreach (var msgId in messageIds.Where(id => id != 0))
                         result.Add(new TrackedApplication(msgId, channelId, archiveCategoryId, guild.DenyUserIds, guild.Name, channelName));
@@ -157,13 +146,13 @@ namespace dev_refined.Clients
                 }
             }
 
-            Log.Debug("DiscordClient.CheckNewApplications: END");
+            Logger.Debug("CheckNewApplications: END");
             return result;
         }
 
         public async Task SendDroptimizerReminders(DateTime now)
         {
-            Log.Debug("DiscordClient.SendDroptimizerReminders: START");
+            Logger.Debug("SendDroptimizerReminders: START");
             foreach (var guild in AppSettings.Guilds.Where(g => g.Features.DroptimizerReminder && Helpers.IsGuildActive(g, now)))
             {
                 var roles = guild.RolesToPing?.Length > 0
@@ -173,12 +162,12 @@ namespace dev_refined.Clients
                 if (channelId != 0)
                     await PostToChannel(channelId, $"{roles}Make sure to post droptimizers or you're not getting loot");
             }
-            Log.Debug("DiscordClient.SendDroptimizerReminders: END");
+            Logger.Debug("SendDroptimizerReminders: END");
         }
 
         public async Task PostWebHook(ulong channelId, List<Search> searchResults)
         {
-            Log.Information("DiscordClient.PostWebHook: START");
+            Logger.Information("PostWebHook: START");
             var embeds = BuildTcgEmbeds(searchResults);
 
             try
@@ -209,7 +198,7 @@ namespace dev_refined.Clients
                         }
                         catch (Exception ex)
                         {
-                            Log.Warning(ex, "DiscordClient.PostWebHook: edit failed for message {MessageId}, creating a new embed", updatedIds[i]);
+                            Logger.Warning(ex, "PostWebHook: edit failed for message {MessageId}, creating a new embed", updatedIds[i]);
                             if (SendEmbedWithIdAsync != null)
                             {
                                 var replacementId = await SendEmbedWithIdAsync(channelId, embed);
@@ -239,7 +228,7 @@ namespace dev_refined.Clients
                     }
                     else
                     {
-                        Log.Warning("DiscordClient.PostWebHook: no embed send/edit delegates are wired up");
+                        Logger.Warning("PostWebHook: no embed send/edit delegates are wired up");
                     }
                 }
 
@@ -258,11 +247,23 @@ namespace dev_refined.Clients
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "DiscordClient.PostWebHook: Failed to send or edit message");
+                Logger.Error(ex, "PostWebHook: Failed to send or edit message");
                 throw;
             }
 
-            Log.Information("DiscordClient.PostWebHook: END");
+            Logger.Information("PostWebHook: END");
+        }
+
+        public async Task SendDirectMessage(ulong userId, string message)
+        {
+            Logger.Information("SendDirectMessage: START for user {UserId}", userId);
+
+            if (SendMessageAsync != null)
+                await SendMessageAsync(userId, message);
+            else
+                Logger.Warning("SendDirectMessage: SendMessageAsync not wired up. UserId: {UserId}", userId);
+
+            Logger.Information("SendDirectMessage: END for user {UserId}", userId);
         }
 
         private static List<Embed> BuildTcgEmbeds(List<Search> searchResults)

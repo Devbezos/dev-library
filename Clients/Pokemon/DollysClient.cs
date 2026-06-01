@@ -7,6 +7,7 @@ namespace dev_library.Clients
 {
     public class DollysClient
     {
+        private static readonly ILogger Logger = Log.ForContext<DollysClient>();
         private static readonly HttpClient _client = new();
         private static readonly string DollysBaseUrl = "https://www.dollys.ca";
 
@@ -63,7 +64,7 @@ namespace dev_library.Clients
                     var nodes = doc.DocumentNode.SelectNodes("//li[contains(@class, 'product')]");
                     if (nodes == null || nodes.Count == 0)
                     {
-                        Log.Information("{LogPrefix}: No products found in {Category}", logPrefix, category);
+                        Logger.Information("{LogPrefix}: No products found in {Category}", logPrefix, category);
                         continue;
                     }
 
@@ -82,11 +83,11 @@ namespace dev_library.Clients
                         products.Add(new Product(name, price, url2));
                     }
 
-                    Log.Information("{LogPrefix}: {Category} - {Count} products", logPrefix, category, products.Count);
+                    Logger.Information("{LogPrefix}: {Category} - {Count} products", logPrefix, category, products.Count);
                 }
                 catch (Exception ex)
                 {
-                    Log.Error(ex, "{LogPrefix}: Error fetching {Category}", logPrefix, category);
+                    Logger.Error(ex, "{LogPrefix}: Error fetching {Category}", logPrefix, category);
                 }
 
                 if (products.Count > 0)
@@ -98,17 +99,17 @@ namespace dev_library.Clients
 
         public async Task<List<Search>> GetPokemon()
         {
-            Log.Information("DollysClient.GetPokemon: START");
+            Logger.Information("GetPokemon: START");
             var results = await FetchCatalogs(GetCatalogs("pokemon", Catalogs), "Dollys", "DollysClient.GetPokemon");
-            Log.Information("DollysClient.GetPokemon: END");
+            Logger.Information("GetPokemon: END");
             return results;
         }
 
         public async Task<List<Search>> GetGundam()
         {
-            Log.Information("DollysClient.GetGundam: START");
+            Logger.Information("GetGundam: START");
             var results = await FetchCatalogs(GetCatalogs("gundam", GundamCatalogs), "Dollys", "DollysClient.GetGundam");
-            Log.Information("DollysClient.GetGundam: END");
+            Logger.Information("GetGundam: END");
             return results;
         }
     }

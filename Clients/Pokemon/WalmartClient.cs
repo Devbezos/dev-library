@@ -10,6 +10,7 @@ namespace dev_library.Clients
 {
     public class WalmartClient
     {
+        private static readonly ILogger Logger = Log.ForContext<WalmartClient>();
         private const string DefaultPokemonUrl = "https://www.walmart.ca/en/browse/toys/trading-cards/pokemon-cards/10011_31745_6000204969672?facet=fulfillment_method%3ADelivery%7C%7Cretailer_type%3AWalmart";
         private const string WalmartBaseUrl = "https://www.walmart.ca";
         private readonly ITcgSourceUrlRepository? _sourceUrlRepo;
@@ -32,7 +33,7 @@ namespace dev_library.Clients
 
         private async Task<List<Search>> GetPokemon(PlaywrightBrowser browser)
         {
-            Log.Information("WalmartClient.GetPokemon: START");
+            Logger.Information("GetPokemon: START");
             var allProducts = new List<Product>();
             var sourceUrls = _sourceUrlRepo?
                 .GetAll("pokemon", "Walmart", enabledOnly: true)
@@ -50,18 +51,18 @@ namespace dev_library.Clients
                     {
                         var products = await GetProductsFromPage(page, source.Url);
                         allProducts.AddRange(products);
-                        Log.Information("WalmartClient.GetPokemon: {Category} found {Count} products", source.Category, products.Count);
+                        Logger.Information("GetPokemon: {Category} found {Count} products", source.Category, products.Count);
                     }
                     catch (Exception ex)
                     {
-                        Log.Error(ex, "WalmartClient.GetPokemon: Error fetching {Category}", source.Category);
+                        Logger.Error(ex, "GetPokemon: Error fetching {Category}", source.Category);
                     }
                 }
 
                 return true;
             });
 
-            Log.Information("WalmartClient.GetPokemon: END - {Count} total products", allProducts.Count);
+            Logger.Information("GetPokemon: END - {Count} total products", allProducts.Count);
             return allProducts.Count > 0
                 ? new List<Search> { new Search("Pokemon", "Walmart", allProducts.DistinctBy(p => p.Url).ToList()) }
                 : new List<Search>();
@@ -72,7 +73,7 @@ namespace dev_library.Clients
             var response = await page.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 45000 });
             if (response != null && response.Status >= 400)
             {
-                Log.Warning("WalmartClient.GetPokemon: page returned HTTP {Status}", response.Status);
+                Logger.Warning("GetPokemon: page returned HTTP {Status}", response.Status);
                 return [];
             }
 
@@ -84,7 +85,7 @@ namespace dev_library.Clients
             }
             catch (TimeoutException)
             {
-                Log.Information("WalmartClient.GetPokemon: No product tiles found");
+                Logger.Information("GetPokemon: No product tiles found");
                 return [];
             }
 

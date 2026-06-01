@@ -8,6 +8,7 @@ namespace dev_library.Clients
 {
     public class EBGamesClient
     {
+        private static readonly ILogger Logger = Log.ForContext<EBGamesClient>();
         private const string EBGamesUrl = "https://www.ebgames.ca/SearchResult/QuickSearch?q=Pok%C3%A9mon%20&platform=361&rootGenre=99&shippingMethod=1&release=1&page={0}";
         private const string EBGamesBaseUrl = "https://www.ebgames.ca";
         private readonly PlaywrightBrowser? _browser;
@@ -28,7 +29,7 @@ namespace dev_library.Clients
 
         private async Task<List<Search>> GetPokemon(PlaywrightBrowser browser)
         {
-            Log.Information("EBGamesClient.GetProducts: START");
+            Logger.Information("GetProducts: START");
             var allProducts = new List<Product>();
 
             var results = await browser.WithPageAsync(async page =>
@@ -45,7 +46,7 @@ namespace dev_library.Clients
                             var response = await page.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 30000 });
                             if (response != null && response.Status >= 400)
                             {
-                                Log.Warning("EBGamesClient.GetProducts: page {Page} returned HTTP {Status}, stopping", pageNum, response.Status);
+                                Logger.Warning("GetProducts: page {Page} returned HTTP {Status}, stopping", pageNum, response.Status);
                                 break;
                             }
 
@@ -55,7 +56,7 @@ namespace dev_library.Clients
                             }
                             catch (TimeoutException)
                             {
-                                Log.Information("EBGamesClient.GetProducts: No product tiles on page {Page}", pageNum);
+                                Logger.Information("GetProducts: No product tiles on page {Page}", pageNum);
                                 break;
                             }
 
@@ -66,7 +67,7 @@ namespace dev_library.Clients
                             content = await page.EvaluateAsync<string>("async pageUrl => { const response = await fetch(pageUrl, { credentials: 'include' }); if (!response.ok) return ''; return await response.text(); }", url);
                             if (string.IsNullOrWhiteSpace(content))
                             {
-                                Log.Warning("EBGamesClient.GetProducts: page {Page} returned an empty response, stopping after {Count} product(s)", pageNum, allProducts.Count);
+                                Logger.Warning("GetProducts: page {Page} returned an empty response, stopping after {Count} product(s)", pageNum, allProducts.Count);
                                 break;
                             }
                         }
@@ -77,7 +78,7 @@ namespace dev_library.Clients
                         var products = doc.DocumentNode.SelectNodes("//div[contains(@class,'searchProductTile') and contains(@class,'searchTileLayout')]");
                         if (products == null || products.Count == 0)
                         {
-                            Log.Information("EBGamesClient.GetProducts: No products on page {Page}, stopping after {Count} product(s)", pageNum, allProducts.Count);
+                            Logger.Information("GetProducts: No products on page {Page}, stopping after {Count} product(s)", pageNum, allProducts.Count);
                             break;
                         }
 
@@ -109,19 +110,19 @@ namespace dev_library.Clients
                             allProducts.Add(new Product(name, price, productUrl));
                         }
 
-                        Log.Information("EBGamesClient.GetProducts: Page {Page} - {Count} products", pageNum, products.Count);
+                        Logger.Information("GetProducts: Page {Page} - {Count} products", pageNum, products.Count);
                         await Task.Delay(2000);
                     }
                 }
                 catch (Exception ex)
                 {
-                    Log.Error(ex, "EBGamesClient.GetProducts: Error fetching page");
+                    Logger.Error(ex, "GetProducts: Error fetching page");
                 }
 
                 return allProducts;
             }, "en-CA,en-GB;q=0.9,en-US;q=0.8,en;q=0.7", blockStylesheets: true);
 
-            Log.Information("EBGamesClient.GetProducts: END - {Count} total products", results.Count);
+            Logger.Information("GetProducts: END - {Count} total products", results.Count);
             return results.Count > 0
                 ? new List<Search> { new Search("Pokemon", "EBGames", results) }
                 : new List<Search>();

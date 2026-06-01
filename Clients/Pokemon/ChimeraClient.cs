@@ -7,13 +7,14 @@ namespace dev_library.Clients
 
     public class ChimeraClient
     {
+        private static readonly ILogger Logger = Log.ForContext<ChimeraClient>();
         private static readonly HttpClient client = new();
         private static readonly string ChimeraCollectionUrl = "https://chimeragamingonline.com/collections/pokemon?filter.v.availability=1&filter.v.price.gte=20&filter.v.price.lte=&page={0}";
         private static readonly string ChimeraBaseUrl = "https://chimeragamingonline.com";
 
         public async Task<List<Search>> GetPokemon()
         {
-            Log.Information("ChimeraClient.GetProducts: START");
+            Logger.Information("GetProducts: START");
             var allProducts = new List<Product>();
             if (!client.DefaultRequestHeaders.Contains("User-Agent"))
                 client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
@@ -30,7 +31,7 @@ namespace dev_library.Clients
                     var products = doc.DocumentNode.SelectNodes("//div[contains(@class, 'grid-view-item__link')]");
                     if (products == null || products.Count == 0)
                     {
-                        Log.Information("ChimeraClient.GetProducts: No products on page {Page}", page);
+                        Logger.Information("GetProducts: No products on page {Page}", page);
                         break;
                     }
 
@@ -48,7 +49,7 @@ namespace dev_library.Clients
                         allProducts.Add(new Product(name, price, url));
                     }
 
-                    Log.Information("ChimeraClient.GetProducts: Page {Page} — {Count} products", page, products.Count);
+                    Logger.Information("GetProducts: Page {Page} — {Count} products", page, products.Count);
 
                     var nextPage = doc.DocumentNode.SelectSingleNode("//a[contains(@class,'pagination__next') or (@aria-label='Next page')]");
                     if (nextPage == null) break;
@@ -59,11 +60,11 @@ namespace dev_library.Clients
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "ChimeraClient.GetProducts: Error fetching collection page");
+                Logger.Error(ex, "GetProducts: Error fetching collection page");
             }
             finally
             {
-                Log.Information("ChimeraClient.GetProducts: END — {Count} total products", allProducts.Count);
+                Logger.Information("GetProducts: END — {Count} total products", allProducts.Count);
             }
 
             return allProducts.Count > 0
