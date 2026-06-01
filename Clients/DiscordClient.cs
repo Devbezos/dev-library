@@ -19,6 +19,8 @@ namespace dev_refined.Clients
         public static Func<ulong, ulong, string, Task>? EditMessageAsync { get; set; }
         public static Func<ulong, ulong, Embed, Task>? EditEmbedMessageAsync { get; set; }
         public static Func<ulong, Task<ulong?>>? GetLatestBotMessageIdAsync { get; set; }
+        public static Func<ulong, Task<ulong[]>>? GetTrackedTcgMessageIdsAsync { get; set; }
+        public static Func<ulong, ulong[], Task>? SaveTrackedTcgMessageIdsAsync { get; set; }
         public static Func<ulong, Embed, Task>? SendEmbedAsync { get; set; }
         public static Func<ulong, string, Task<ulong>>? CreateApplicationChannelAsync { get; set; }
         public static Func<ulong, Embed, Task<ulong>>? SendEmbedWithIdAsync { get; set; }
@@ -172,7 +174,17 @@ namespace dev_refined.Clients
 
             try
             {
-                if (!_tcgMessageIdsByChannel.TryGetValue(channelId, out var messageIds) && GetLatestBotMessageIdAsync != null)
+                if (!_tcgMessageIdsByChannel.TryGetValue(channelId, out var messageIds) && GetTrackedTcgMessageIdsAsync != null)
+                {
+                    var persisted = await GetTrackedTcgMessageIdsAsync(channelId);
+                    if (persisted.Length > 0)
+                    {
+                        messageIds = persisted;
+                        _tcgMessageIdsByChannel[channelId] = messageIds;
+                    }
+                }
+
+                if ((messageIds == null || messageIds.Length == 0) && GetLatestBotMessageIdAsync != null)
                 {
                     var existing = await GetLatestBotMessageIdAsync(channelId);
                     if (existing.HasValue && existing.Value != 0)
@@ -243,7 +255,10 @@ namespace dev_refined.Clients
                     }
                 }
 
-                _tcgMessageIdsByChannel[channelId] = updatedIds.ToArray();
+                var finalIds = updatedIds.Where(id => id != 0).ToArray();
+                _tcgMessageIdsByChannel[channelId] = finalIds;
+                if (SaveTrackedTcgMessageIdsAsync != null)
+                    await SaveTrackedTcgMessageIdsAsync(channelId, finalIds);
             }
             catch (Exception ex)
             {
