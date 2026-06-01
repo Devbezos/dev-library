@@ -459,6 +459,8 @@ namespace dev_library.Data.Fitness
         public double? SleepHours { get; set; }
         public long Steps { get; set; }
         public int? RestingHrBpm { get; set; }
+        public double? CaloriesBurnt { get; set; }
+        public double? CaloriesEaten { get; set; }
         public List<FitnessActivityEntry> Activities { get; set; } = new();
     }
 
@@ -469,6 +471,8 @@ namespace dev_library.Data.Fitness
         public double? AvgRestingHrBpm { get; set; }
         public double? WeightDeltaLbs { get; set; }
         public int TotalActivityMinutes { get; set; }
+        public double? AvgDailyCalorieDeficit { get; set; }
+        public int CalorieLoggedDays { get; set; }
         public List<FitnessActivityEntry> Activities { get; set; } = new();
     }
 

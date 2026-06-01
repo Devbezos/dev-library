@@ -218,6 +218,14 @@ namespace dev_library.Clients.Fitness
                 .ToList() ?? new List<GoogleHealthSleepDataPoint>();
         }
 
+        public async Task<List<GoogleHealthNutritionDataPoint>> Get7DayNutrition()
+        {
+            var sevenDaysAgo = DateTime.Now.AddDays(-7).Date.ToString("yyyy-MM-dd") + "T00:00:00";
+            var result = await FetchDataType<GoogleHealthNutritionResponse>("nutrition-log",
+                $"nutrition_log.interval.civil_start_time >= \"{sevenDaysAgo}\"");
+            return result?.DataPoints ?? new List<GoogleHealthNutritionDataPoint>();
+        }
+
         public async Task<List<GoogleHealthNutritionDataPoint>> GetDayNutrition(DateOnly date)
         {
             var start = date.ToString("yyyy-MM-dd") + "T00:00:00";
@@ -248,11 +256,12 @@ namespace dev_library.Clients.Fitness
 
         public async Task<DailyFitnessSnapshot> GetDailySnapshot()
         {
-            var exercisesTask = Get24HourExercises();
-            var stepsTask     = Get24HourStepCount();
-            var sleepTask     = Get24HourSleep();
-            var hrTask        = GetRestingHeartRate(1);
-            await Task.WhenAll(exercisesTask, stepsTask, sleepTask, hrTask);
+            var exercisesTask  = Get24HourExercises();
+            var stepsTask      = Get24HourStepCount();
+            var sleepTask      = Get24HourSleep();
+            var hrTask         = GetRestingHeartRate(1);
+            var nutritionTask  = GetDayNutrition(DateOnly.FromDateTime(DateTime.Today.AddDays(-1)));
+            await Task.WhenAll(exercisesTask, stepsTask, sleepTask, hrTask, nutritionTask);
 
             var mainSleep  = sleepTask.Result.OrderByDescending(s => s.Sleep.Summary.MinutesAsleep).FirstOrDefault();
             var sleepHours = mainSleep?.Sleep.GetDurationHours() is double h && h > 0 ? h : (double?)null;
@@ -273,23 +282,29 @@ namespace dev_library.Clients.Fitness
                 })
                 .ToList();
 
+            var caloriesBurnt = exercisesTask.Result.Sum(e => e.Exercise.MetricsSummary.CaloriesKcal ?? 0);
+            var caloriesEaten = nutritionTask.Result.Sum(p => p.Nutrition.Nutrients.Calories ?? 0);
+
             return new DailyFitnessSnapshot
             {
-                SleepHours   = sleepHours,
-                Steps        = stepsTask.Result,
-                RestingHrBpm = hrBpm,
-                Activities   = activities,
+                SleepHours    = sleepHours,
+                Steps         = stepsTask.Result,
+                RestingHrBpm  = hrBpm,
+                CaloriesBurnt = caloriesBurnt > 0 ? caloriesBurnt : null,
+                CaloriesEaten = caloriesEaten > 0 ? caloriesEaten : null,
+                Activities    = activities,
             };
         }
 
         public async Task<WeeklyFitnessSnapshot> GetWeeklySnapshot()
         {
-            var exercisesTask = Get7DayExercises();
-            var stepsTask     = Get7DayStepCount();
-            var sleepTask     = Get7DaySleep();
-            var weightTask    = GetRecentWeight(7);
-            var hrTask        = GetRestingHeartRate(7);
-            await Task.WhenAll(exercisesTask, stepsTask, sleepTask, weightTask, hrTask);
+            var exercisesTask  = Get7DayExercises();
+            var stepsTask      = Get7DayStepCount();
+            var sleepTask      = Get7DaySleep();
+            var weightTask     = GetRecentWeight(7);
+            var hrTask         = GetRestingHeartRate(7);
+            var nutritionTask  = Get7DayNutrition();
+            await Task.WhenAll(exercisesTask, stepsTask, sleepTask, weightTask, hrTask, nutritionTask);
 
             var sleepDurations = sleepTask.Result.Select(dp => dp.Sleep.GetDurationHours()).Where(h => h > 0).ToList();
             double? avgSleep = sleepDurations.Count > 0 ? sleepDurations.Average() : null;
@@ -320,14 +335,28 @@ namespace dev_library.Clients.Fitness
                 })
                 .ToList();
 
+            var caloriesByDay = nutritionTask.Result
+                .GroupBy(p => DateTime.TryParse(p.Nutrition.Interval.StartTime, out var t) ? t.Date : DateTime.MinValue)
+                .Where(g => g.Key != DateTime.MinValue)
+                .ToDictionary(g => g.Key, g => g.Sum(p => p.Nutrition.Nutrients.Calories ?? 0));
+
+            int calorieLoggedDays = caloriesByDay.Values.Count(c => c >= 1000);
+            var totalCaloriesBurnt = exercisesTask.Result.Sum(e => e.Exercise.MetricsSummary.CaloriesKcal ?? 0);
+            var totalCaloriesEaten = nutritionTask.Result.Sum(p => p.Nutrition.Nutrients.Calories ?? 0);
+            double? avgDailyDeficit = (totalCaloriesBurnt > 0 || totalCaloriesEaten > 0)
+                ? (totalCaloriesBurnt - totalCaloriesEaten) / 7.0
+                : null;
+
             return new WeeklyFitnessSnapshot
             {
-                AvgSleepHours        = avgSleep,
-                AvgStepsPerDay       = stepsTask.Result / 7,
-                AvgRestingHrBpm      = avgHr,
-                WeightDeltaLbs       = weightDelta,
-                TotalActivityMinutes = totalMins,
-                Activities           = activities,
+                AvgSleepHours          = avgSleep,
+                AvgStepsPerDay         = stepsTask.Result / 7,
+                AvgRestingHrBpm        = avgHr,
+                WeightDeltaLbs         = weightDelta,
+                TotalActivityMinutes   = totalMins,
+                AvgDailyCalorieDeficit = avgDailyDeficit,
+                CalorieLoggedDays      = calorieLoggedDays,
+                Activities             = activities,
             };
         }
 
