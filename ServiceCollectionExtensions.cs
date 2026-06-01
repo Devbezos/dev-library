@@ -20,6 +20,9 @@ namespace dev_library
             services.AddSingleton<IJobRepository>(_ => new JobRepository(connectionString));
             services.AddSingleton<ITcgRepository>(_ => new TcgRepository(connectionString));
             services.AddSingleton<ITcgSourceUrlRepository>(_ => new TcgSourceUrlRepository(connectionString));
+            services.AddSingleton<ITcgHiddenItemRepository>(_ => new TcgHiddenItemRepository(connectionString));
+            services.AddSingleton<ITcgChannelSettingsRepository>(_ => new TcgChannelSettingsRepository(connectionString));
+            services.AddSingleton<ITcgFilterSettingsRepository>(_ => new TcgFilterSettingsRepository(connectionString));
             return services;
         }
 

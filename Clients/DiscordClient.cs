@@ -21,7 +21,7 @@ namespace dev_refined.Clients
         public static Func<ulong, string, Task<ulong>>? CreateApplicationChannelAsync { get; set; }
         public static Func<ulong, Embed, Task<ulong>>? SendEmbedWithIdAsync { get; set; }
         public static Func<ulong, ulong, Task>? PinMessageAsync { get; set; }
-        private static readonly ConcurrentDictionary<ulong, ulong> _tcgMessageByChannel = new();
+        private static readonly ConcurrentDictionary<ulong, ulong[]> _tcgMessageIdsByChannel = new();
 
         public async Task PostToChannel(ulong channelId, string message)
         {
@@ -166,38 +166,82 @@ namespace dev_refined.Clients
         public async Task PostWebHook(ulong channelId, List<Search> searchResults)
         {
             Log.Information("DiscordClient.PostWebHook: START");
-            var embed = BuildTcgEmbed(searchResults);
+            var embeds = BuildTcgEmbeds(searchResults);
 
             try
             {
-                if (!_tcgMessageByChannel.TryGetValue(channelId, out var messageId) && GetLatestBotMessageIdAsync != null)
+                if (!_tcgMessageIdsByChannel.TryGetValue(channelId, out var messageIds) && GetLatestBotMessageIdAsync != null)
                 {
                     var existing = await GetLatestBotMessageIdAsync(channelId);
                     if (existing.HasValue && existing.Value != 0)
                     {
-                        messageId = existing.Value;
-                        _tcgMessageByChannel[channelId] = messageId;
+                        messageIds = [existing.Value];
+                        _tcgMessageIdsByChannel[channelId] = messageIds;
                     }
                 }
 
-                if (messageId != 0 && EditEmbedMessageAsync != null)
+                messageIds ??= [];
+                var updatedIds = messageIds.ToList();
+
+                for (var i = 0; i < embeds.Count; i++)
                 {
-                    await EditEmbedMessageAsync(channelId, messageId, embed);
+                    var embed = embeds[i];
+
+                    if (i < updatedIds.Count && updatedIds[i] != 0 && EditEmbedMessageAsync != null)
+                    {
+                        try
+                        {
+                            await EditEmbedMessageAsync(channelId, updatedIds[i], embed);
+                            continue;
+                        }
+                        catch (Exception ex)
+                        {
+                            Log.Warning(ex, "DiscordClient.PostWebHook: edit failed for message {MessageId}, creating a new embed", updatedIds[i]);
+                            if (SendEmbedWithIdAsync != null)
+                            {
+                                var replacementId = await SendEmbedWithIdAsync(channelId, embed);
+                                if (replacementId != 0)
+                                {
+                                    updatedIds[i] = replacementId;
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+
+                    if (SendEmbedWithIdAsync != null)
+                    {
+                        var createdId = await SendEmbedWithIdAsync(channelId, embed);
+                        if (createdId != 0)
+                        {
+                            if (i < updatedIds.Count) updatedIds[i] = createdId;
+                            else updatedIds.Add(createdId);
+                            continue;
+                        }
+                    }
+
+                    if (SendEmbedAsync != null)
+                    {
+                        await SendEmbedAsync(channelId, embed);
+                    }
+                    else
+                    {
+                        Log.Warning("DiscordClient.PostWebHook: no embed send/edit delegates are wired up");
+                    }
                 }
-                else if (SendEmbedWithIdAsync != null)
+
+                // If we previously needed more pages, replace leftover pages with a notice instead of leaving stale data.
+                if (EditEmbedMessageAsync != null && updatedIds.Count > embeds.Count)
                 {
-                    var createdId = await SendEmbedWithIdAsync(channelId, embed);
-                    if (createdId != 0)
-                        _tcgMessageByChannel[channelId] = createdId;
+                    for (var i = embeds.Count; i < updatedIds.Count; i++)
+                    {
+                        if (updatedIds[i] == 0) continue;
+                        var stale = BuildEmptyContinuationEmbed(i + 1, updatedIds.Count);
+                        await EditEmbedMessageAsync(channelId, updatedIds[i], stale);
+                    }
                 }
-                else if (SendEmbedAsync != null)
-                {
-                    await SendEmbedAsync(channelId, embed);
-                }
-                else
-                {
-                    Log.Warning("DiscordClient.PostWebHook: no embed send/edit delegates are wired up");
-                }
+
+                _tcgMessageIdsByChannel[channelId] = updatedIds.ToArray();
             }
             catch (Exception ex)
             {
@@ -208,41 +252,118 @@ namespace dev_refined.Clients
             Log.Information("DiscordClient.PostWebHook: END");
         }
 
-        private static Embed BuildTcgEmbed(List<Search> searchResults)
+        private static List<Embed> BuildTcgEmbeds(List<Search> searchResults)
         {
-            var sb = new StringBuilder();
+            var storeBlocks = new List<List<string>>();
             foreach (var storeGroup in searchResults.GroupBy(sr => sr.Store).OrderBy(g => g.Key))
             {
-                var isExpensive = storeGroup.Key.Contains("💸 Expensive");
-                sb.AppendLine($"- {storeGroup.Key}");
+                var block = new List<string> { $"- {storeGroup.Key}" };
 
-                foreach (var itemInStock in storeGroup)
+                var products = storeGroup
+                    .SelectMany(s => s.Products)
+                    .GroupBy(p => new { p.Name, p.Price, p.Url })
+                    .Select(g => g.First())
+                    .ToList();
+
+                foreach (var product in products)
                 {
-                    sb.AppendLine($"  - {itemInStock.Keyword}");
-                    foreach (var product in itemInStock.Products)
+                    block.Add($"  - {product.Url.TrimEnd()}");
+                }
+
+                storeBlocks.Add(block);
+            }
+
+            var descriptions = BuildEmbedDescriptions(storeBlocks);
+            var total = descriptions.Count;
+
+            var embeds = new List<Embed>(total);
+            for (var i = 0; i < total; i++)
+            {
+                var title = total == 1 ? TcgMessageHeader : $"{TcgMessageHeader} ({i + 1}/{total})";
+                embeds.Add(new EmbedBuilder()
+                    .WithTitle(title)
+                    .WithDescription(descriptions[i])
+                    .WithFooter($"Updated: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC")
+                    .WithColor(Color.Blue)
+                    .Build());
+            }
+
+            return embeds;
+        }
+
+        private static List<string> BuildEmbedDescriptions(List<List<string>> storeBlocks)
+        {
+            const int max = 3900;
+
+            if (storeBlocks.Count == 0)
+                return ["No products found."];
+
+            var chunks = new List<string>();
+            var current = new StringBuilder();
+
+            void FlushCurrent()
+            {
+                if (current.Length == 0) return;
+                chunks.Add(current.ToString().TrimEnd());
+                current.Clear();
+            }
+
+            foreach (var block in storeBlocks)
+            {
+                var blockText = string.Join("\n", block) + "\n";
+                if (blockText.Length <= max)
+                {
+                    if (current.Length + blockText.Length > max)
+                        FlushCurrent();
+                    current.Append(blockText);
+                    continue;
+                }
+
+                // Rare case: one store block alone exceeds max. Split by lines and repeat store header as needed.
+                var storeHeader = block.First();
+                var lines = block.Skip(1).ToList();
+                var local = new StringBuilder();
+                local.AppendLine(storeHeader);
+
+                foreach (var line in lines)
+                {
+                    var safeLine = line.Length > (max - 16) ? line[..(max - 16)] + " ..." : line;
+                    if (local.Length + safeLine.Length + 1 > max)
                     {
-                        var url = isExpensive
-                            ? $"||{product.Url.TrimEnd()}||"
-                            : product.Url.TrimEnd();
-                        sb.AppendLine($"      - {url}");
+                        if (current.Length + local.Length > max)
+                            FlushCurrent();
+                        current.Append(local.ToString());
+                        if (current.Length >= max)
+                            FlushCurrent();
+
+                        local.Clear();
+                        local.AppendLine(storeHeader + " (cont.)");
                     }
+
+                    local.AppendLine(safeLine);
+                }
+
+                if (local.Length > 0)
+                {
+                    if (current.Length + local.Length > max)
+                        FlushCurrent();
+                    current.Append(local.ToString());
                 }
             }
 
-            var description = sb.Length == 0 ? "No products found." : TrimForDiscordEmbedDescription(sb.ToString());
+            FlushCurrent();
+            return chunks.Count == 0 ? ["No products found."] : chunks;
+        }
+
+        private static Embed BuildEmptyContinuationEmbed(int page, int totalPages)
+        {
+            var title = totalPages <= 1 ? TcgMessageHeader : $"{TcgMessageHeader} ({page}/{totalPages})";
             return new EmbedBuilder()
-                .WithTitle(TcgMessageHeader)
-                .WithDescription(description)
+                .WithTitle(title)
+                .WithDescription("No additional pages for this update.")
                 .WithFooter($"Updated: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC")
                 .WithColor(Color.Blue)
                 .Build();
-        }
-
-        private static string TrimForDiscordEmbedDescription(string message)
-        {
-            const int max = 3900;
-            if (message.Length <= max) return message;
-            return message[..(max - 28)] + "\n\n...message truncated...";
         }
     }
 }
