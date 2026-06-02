@@ -312,7 +312,7 @@ namespace dev_refined.Clients
                 embeds.Add(new EmbedBuilder()
                     .WithTitle(title)
                     .WithDescription(descriptions[i])
-                    .WithFooter($"Updated: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC")
+                    .WithFooter($"Updated: {GetEasternNow():yyyy-MM-dd HH:mm:ss} ET")
                     .WithColor(Color.Blue)
                     .Build());
             }
@@ -390,9 +390,25 @@ namespace dev_refined.Clients
             return new EmbedBuilder()
                 .WithTitle(title)
                 .WithDescription("No additional pages for this update.")
-                .WithFooter($"Updated: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC")
+                .WithFooter($"Updated: {GetEasternNow():yyyy-MM-dd HH:mm:ss} ET")
                 .WithColor(Color.Blue)
                 .Build();
+        }
+
+        private static DateTime GetEasternNow()
+        {
+            var utcNow = DateTime.UtcNow;
+            foreach (var timeZoneId in new[] { "Eastern Standard Time", "America/Toronto", "America/New_York" })
+            {
+                try
+                {
+                    return TimeZoneInfo.ConvertTimeFromUtc(utcNow, TimeZoneInfo.FindSystemTimeZoneById(timeZoneId));
+                }
+                catch (TimeZoneNotFoundException) { }
+                catch (InvalidTimeZoneException) { }
+            }
+
+            return utcNow.ToLocalTime();
         }
     }
 }
