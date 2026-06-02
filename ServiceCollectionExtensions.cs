@@ -26,6 +26,7 @@ namespace dev_library
             services.AddSingleton<ITcgFilterSettingsRepository>(_ => new TcgFilterSettingsRepository(connectionString));
             services.AddSingleton<ITcgProductGroupRepository>(_ => new TcgProductGroupRepository(connectionString));
             services.AddSingleton<ITcgMessageStateRepository>(_ => new TcgMessageStateRepository(connectionString));
+            services.AddSingleton<IPokemonCenterSecurityStateRepository>(_ => new PokemonCenterSecurityStateRepository(connectionString));
             return services;
         }
 

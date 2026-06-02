@@ -31,6 +31,7 @@ namespace dev_library.Data
             (Constants.Jobs.GundamTcg,           null, 10, 0, 60),   // every hour after 10:00
             (Constants.Jobs.PokemonPreorderTcg,  null, 10, 0, 60),   // every hour after 10:00
             (Constants.Jobs.GundamPreorderTcg,   null, 10, 0, 60),   // every hour after 10:00
+            (Constants.Jobs.PokemonCenterSecurity, null, 0, 0, 1),    // every minute
         ];
 
         public void EnsureTable()

@@ -15,6 +15,7 @@
             public const string PreorderTcg         = "preorder_tcg";
             public const string PokemonPreorderTcg  = "pokemon_preorder_tcg";
             public const string GundamPreorderTcg   = "gundam_preorder_tcg";
+            public const string PokemonCenterSecurity = "pokemon_center_security";
         }
 
         public static class GoogleHealth
