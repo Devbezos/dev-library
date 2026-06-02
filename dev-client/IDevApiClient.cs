@@ -49,6 +49,7 @@ public interface IDevApiClient
     Task UpdateTcgChannelSettings(TcgChannelSettings settings, CancellationToken cancellationToken = default);
     Task<TcgChannel> GetTcgChannel(string game, CancellationToken cancellationToken = default);
     Task UpdateTcgChannel(string game, string channelId, CancellationToken cancellationToken = default);
+    Task UpdateTcgNotificationUserIds(string game, IEnumerable<string> userIds, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<TcgProductGroupResult>> GetTcgProductGroups(string game, CancellationToken cancellationToken = default);
     Task UpdateTcgProductGroupMarketPrices(string groupKey, TcgProductGroupMarketPrices prices, CancellationToken cancellationToken = default);
 

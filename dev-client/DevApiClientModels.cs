@@ -51,9 +51,12 @@ public sealed record TcgRunResult(DateTime RanAt, int ResultsFound);
 public sealed record TcgChannelSettings(
     string PokemonChannelId,
     string GundamChannelId,
-    string PreorderChannelId);
+    string PreorderChannelId,
+    string[] PokemonNotificationUserIds,
+    string[] GundamNotificationUserIds,
+    string[] PreorderNotificationUserIds);
 
-public sealed record TcgChannel(string Game, string ChannelId);
+public sealed record TcgChannel(string Game, string ChannelId, string[] NotificationUserIds);
 
 public sealed record TcgProductGroupResult(
     string Game,

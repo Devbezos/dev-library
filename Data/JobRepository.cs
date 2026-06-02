@@ -27,7 +27,9 @@ namespace dev_library.Data
             (Constants.Jobs.DroptimizerReminder, 2,    17, 0, null), // 2 = Tuesday
             (Constants.Jobs.ServerAvailability,  null, 0,  0, 1),    // every minute
             (Constants.Jobs.KeyAudit,            null, 0,  0, null), // timing controlled by Helpers.IsKeyAuditTime
-            (Constants.Jobs.Tcg,                 null, 10, 0, 60),   // every hour after 10:00
+            (Constants.Jobs.PokemonTcg,          null, 10, 0, 60),   // every hour after 10:00
+            (Constants.Jobs.GundamTcg,           null, 10, 0, 60),   // every hour after 10:00
+            (Constants.Jobs.PreorderTcg,         null, 10, 0, 60),   // every hour after 10:00
         ];
 
         public void EnsureTable()
@@ -71,14 +73,17 @@ namespace dev_library.Data
                 UPDATE scheduled_jobs
                 SET interval_minutes = CASE
                     WHEN name = @serverAvailability THEN 1
-                    WHEN name = @tcg THEN 60
+                    WHEN name IN (@tcg, @pokemonTcg, @gundamTcg, @preorderTcg) THEN 60
                     ELSE interval_minutes
                 END
                 WHERE interval_minutes IS NULL
-                  AND name IN (@serverAvailability, @tcg)
+                  AND name IN (@serverAvailability, @tcg, @pokemonTcg, @gundamTcg, @preorderTcg)
                 """;
             migrateIntervals.Parameters.AddWithValue("@serverAvailability", Constants.Jobs.ServerAvailability);
             migrateIntervals.Parameters.AddWithValue("@tcg", Constants.Jobs.Tcg);
+            migrateIntervals.Parameters.AddWithValue("@pokemonTcg", Constants.Jobs.PokemonTcg);
+            migrateIntervals.Parameters.AddWithValue("@gundamTcg", Constants.Jobs.GundamTcg);
+            migrateIntervals.Parameters.AddWithValue("@preorderTcg", Constants.Jobs.PreorderTcg);
             migrateIntervals.ExecuteNonQuery();
 
             // Migration: FitnessWeekly was seeded as Monday (1), update to Sunday (0)
@@ -111,12 +116,13 @@ namespace dev_library.Data
         {
             using var select = conn.CreateCommand();
             select.CommandText = """
-                SELECT name, enabled, day_of_week, hour, minute, last_run
+                SELECT name, enabled, day_of_week, hour, minute, interval_minutes, last_run
                 FROM scheduled_jobs
-                WHERE name IN (@pokemon, @gundam, @tcg)
+                WHERE name IN (@pokemon, @gundam, @preorder, @tcg)
                 """;
             select.Parameters.AddWithValue("@pokemon", Constants.Jobs.PokemonTcg);
             select.Parameters.AddWithValue("@gundam", Constants.Jobs.GundamTcg);
+            select.Parameters.AddWithValue("@preorder", Constants.Jobs.PreorderTcg);
             select.Parameters.AddWithValue("@tcg", Constants.Jobs.Tcg);
 
             var rows = new List<ScheduledJob>();
@@ -131,45 +137,41 @@ namespace dev_library.Data
                         DayOfWeek = reader.IsDBNull(reader.GetOrdinal("day_of_week")) ? null : (int?)reader.GetInt32("day_of_week"),
                         Hour = reader.GetInt32("hour"),
                         Minute = reader.GetInt32("minute"),
+                        IntervalMinutes = reader.IsDBNull(reader.GetOrdinal("interval_minutes")) ? null : (int?)reader.GetInt32("interval_minutes"),
                         LastRun = reader.IsDBNull(reader.GetOrdinal("last_run")) ? null : reader.GetDateTime("last_run"),
                     });
                 }
             }
 
-            if (rows.All(r => r.Name != Constants.Jobs.Tcg))
+            var legacyTcg = rows.FirstOrDefault(r => r.Name == Constants.Jobs.Tcg);
+            if (legacyTcg != null)
             {
-                var seed = rows.FirstOrDefault(r => r.Name == Constants.Jobs.PokemonTcg)
-                    ?? rows.FirstOrDefault(r => r.Name == Constants.Jobs.GundamTcg);
-
-                if (seed != null)
-                {
-                    var lastRun = rows
-                        .Where(r => r.Name == Constants.Jobs.PokemonTcg || r.Name == Constants.Jobs.GundamTcg)
-                        .Select(r => r.LastRun)
-                        .Where(r => r.HasValue)
-                        .OrderByDescending(r => r)
-                        .FirstOrDefault();
-
-                    using var insert = conn.CreateCommand();
-                    insert.CommandText = """
-                        INSERT INTO scheduled_jobs (name, enabled, day_of_week, hour, minute, last_run)
-                        VALUES (@name, @enabled, @dow, @hour, @minute, @lastRun)
-                        """;
-                    insert.Parameters.AddWithValue("@name", Constants.Jobs.Tcg);
-                    insert.Parameters.AddWithValue("@enabled", seed.Enabled);
-                    insert.Parameters.AddWithValue("@dow", (object?)seed.DayOfWeek ?? DBNull.Value);
-                    insert.Parameters.AddWithValue("@hour", seed.Hour);
-                    insert.Parameters.AddWithValue("@minute", seed.Minute);
-                    insert.Parameters.AddWithValue("@lastRun", (object?)lastRun ?? DBNull.Value);
-                    insert.ExecuteNonQuery();
-                }
+                InsertTcgJobFromLegacy(conn, Constants.Jobs.PokemonTcg, legacyTcg);
+                InsertTcgJobFromLegacy(conn, Constants.Jobs.GundamTcg, legacyTcg);
+                InsertTcgJobFromLegacy(conn, Constants.Jobs.PreorderTcg, legacyTcg);
             }
 
             using var delete = conn.CreateCommand();
-            delete.CommandText = "DELETE FROM scheduled_jobs WHERE name IN (@pokemon, @gundam)";
-            delete.Parameters.AddWithValue("@pokemon", Constants.Jobs.PokemonTcg);
-            delete.Parameters.AddWithValue("@gundam", Constants.Jobs.GundamTcg);
+            delete.CommandText = "DELETE FROM scheduled_jobs WHERE name = @tcg";
+            delete.Parameters.AddWithValue("@tcg", Constants.Jobs.Tcg);
             delete.ExecuteNonQuery();
+        }
+
+        private static void InsertTcgJobFromLegacy(MySqlConnection conn, string name, ScheduledJob legacy)
+        {
+            using var insert = conn.CreateCommand();
+            insert.CommandText = """
+                INSERT IGNORE INTO scheduled_jobs (name, enabled, day_of_week, hour, minute, interval_minutes, last_run)
+                VALUES (@name, @enabled, @dow, @hour, @minute, @intervalMinutes, @lastRun)
+                """;
+            insert.Parameters.AddWithValue("@name", name);
+            insert.Parameters.AddWithValue("@enabled", legacy.Enabled);
+            insert.Parameters.AddWithValue("@dow", (object?)legacy.DayOfWeek ?? DBNull.Value);
+            insert.Parameters.AddWithValue("@hour", legacy.Hour);
+            insert.Parameters.AddWithValue("@minute", legacy.Minute);
+            insert.Parameters.AddWithValue("@intervalMinutes", (object?)legacy.IntervalMinutes ?? DBNull.Value);
+            insert.Parameters.AddWithValue("@lastRun", (object?)legacy.LastRun ?? DBNull.Value);
+            insert.ExecuteNonQuery();
         }
 
         public List<ScheduledJob> GetAll()

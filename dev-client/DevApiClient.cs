@@ -159,6 +159,9 @@ public sealed class DevApiClient : IDevApiClient
     public Task UpdateTcgChannel(string game, string channelId, CancellationToken cancellationToken = default) =>
         PutEmpty($"api/tcg/channels/{Url(game)}/{Url(channelId)}", cancellationToken);
 
+    public Task UpdateTcgNotificationUserIds(string game, IEnumerable<string> userIds, CancellationToken cancellationToken = default) =>
+        Put($"api/tcg/notification-users/{Url(game)}", new { UserIds = userIds.ToArray() }, cancellationToken);
+
     public Task<IReadOnlyList<TcgProductGroupResult>> GetTcgProductGroups(string game, CancellationToken cancellationToken = default) =>
         GetList<TcgProductGroupResult>("api/tcg/product-groups" + Query(("game", game)), cancellationToken);
 
