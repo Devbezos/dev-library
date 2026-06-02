@@ -283,26 +283,32 @@ namespace dev_refined.Clients
 
         private static List<Embed> BuildTcgEmbeds(List<Search> searchResults)
         {
-            var storeBlocks = new List<List<string>>();
-            foreach (var storeGroup in searchResults.GroupBy(sr => sr.Store).OrderBy(g => g.Key))
-            {
-                var block = new List<string> { $"- {storeGroup.Key}" };
+            var itemBlocks = new List<List<string>>();
+            var items = searchResults
+                .SelectMany(s => s.Products.Select(p => new { s.Store, Product = p }))
+                .GroupBy(x => x.Product.Name)
+                .OrderBy(g => g.Key);
 
-                var products = storeGroup
-                    .SelectMany(s => s.Products)
-                    .GroupBy(p => new { p.Name, p.Price, p.Url })
+            foreach (var itemGroup in items)
+            {
+                var block = new List<string> { $"- {itemGroup.Key}" };
+
+                var storeListings = itemGroup
+                    .GroupBy(x => new { x.Store, x.Product.Price, x.Product.Url })
                     .Select(g => g.First())
+                    .OrderBy(x => x.Store)
+                    .ThenBy(x => x.Product.Price)
                     .ToList();
 
-                foreach (var product in products)
+                foreach (var listing in storeListings)
                 {
-                    block.Add($"  - {product.Url.TrimEnd()}");
+                    block.Add($"  - {listing.Store}: {listing.Product.Url.TrimEnd()}");
                 }
 
-                storeBlocks.Add(block);
+                itemBlocks.Add(block);
             }
 
-            var descriptions = BuildEmbedDescriptions(storeBlocks);
+            var descriptions = BuildEmbedDescriptions(itemBlocks);
             var total = descriptions.Count;
 
             var embeds = new List<Embed>(total);
@@ -320,11 +326,11 @@ namespace dev_refined.Clients
             return embeds;
         }
 
-        private static List<string> BuildEmbedDescriptions(List<List<string>> storeBlocks)
+        private static List<string> BuildEmbedDescriptions(List<List<string>> itemBlocks)
         {
             const int max = 3900;
 
-            if (storeBlocks.Count == 0)
+            if (itemBlocks.Count == 0)
                 return ["No products found."];
 
             var chunks = new List<string>();
@@ -337,7 +343,7 @@ namespace dev_refined.Clients
                 current.Clear();
             }
 
-            foreach (var block in storeBlocks)
+            foreach (var block in itemBlocks)
             {
                 var blockText = string.Join("\n", block) + "\n";
                 if (blockText.Length <= max)
@@ -348,11 +354,11 @@ namespace dev_refined.Clients
                     continue;
                 }
 
-                // Rare case: one store block alone exceeds max. Split by lines and repeat store header as needed.
-                var storeHeader = block.First();
+                // Rare case: one item block alone exceeds max. Split by lines and repeat item header as needed.
+                var itemHeader = block.First();
                 var lines = block.Skip(1).ToList();
                 var local = new StringBuilder();
-                local.AppendLine(storeHeader);
+                local.AppendLine(itemHeader);
 
                 foreach (var line in lines)
                 {
@@ -366,7 +372,7 @@ namespace dev_refined.Clients
                             FlushCurrent();
 
                         local.Clear();
-                        local.AppendLine(storeHeader + " (cont.)");
+                        local.AppendLine(itemHeader + " (cont.)");
                     }
 
                     local.AppendLine(safeLine);
