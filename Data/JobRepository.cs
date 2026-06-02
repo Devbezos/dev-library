@@ -9,6 +9,7 @@ namespace dev_library.Data
         public int? DayOfWeek { get; set; }   // null = every day; 0=Sun … 6=Sat
         public int Hour { get; set; }
         public int Minute { get; set; }
+        public int? IntervalMinutes { get; set; } // null = exact scheduled time; otherwise repeat after start time
         public DateTime? LastRun { get; set; } // stored/compared as UTC
     }
 
@@ -19,14 +20,14 @@ namespace dev_library.Data
         public JobRepository(string connectionString) => _connectionString = connectionString;
 
         // Seed rows — INSERT IGNORE, so existing rows (user-edited) are preserved
-        private static readonly (string Name, int? DayOfWeek, int Hour, int Minute)[] _defaults =
+        private static readonly (string Name, int? DayOfWeek, int Hour, int Minute, int? IntervalMinutes)[] _defaults =
         [
-            (Constants.Jobs.FitnessDaily,        null, 0,  0),
-            (Constants.Jobs.FitnessWeekly,       0,    0,  0),   // 0 = Sunday
-            (Constants.Jobs.DroptimizerReminder, 2,    17, 0),   // 2 = Tuesday
-            (Constants.Jobs.ServerAvailability,  null, 0,  0),   // runs every tick; hour/minute unused
-            (Constants.Jobs.KeyAudit,            null, 0,  0),   // timing controlled by Helpers.IsKeyAuditTime
-            (Constants.Jobs.Tcg,                 null, 10, 0),   // every day at 10:00
+            (Constants.Jobs.FitnessDaily,        null, 0,  0, null),
+            (Constants.Jobs.FitnessWeekly,       0,    0,  0, null), // 0 = Sunday
+            (Constants.Jobs.DroptimizerReminder, 2,    17, 0, null), // 2 = Tuesday
+            (Constants.Jobs.ServerAvailability,  null, 0,  0, 1),    // every minute
+            (Constants.Jobs.KeyAudit,            null, 0,  0, null), // timing controlled by Helpers.IsKeyAuditTime
+            (Constants.Jobs.Tcg,                 null, 10, 0, 60),   // every hour after 10:00
         ];
 
         public void EnsureTable()
@@ -41,32 +42,69 @@ namespace dev_library.Data
                     day_of_week TINYINT UNSIGNED NULL,
                     hour        TINYINT UNSIGNED NOT NULL,
                     minute      TINYINT UNSIGNED NOT NULL DEFAULT 0,
+                    interval_minutes INT UNSIGNED NULL,
                     last_run    DATETIME         NULL
                 )
                 """;
             cmd.ExecuteNonQuery();
 
+            EnsureColumn(conn, "interval_minutes", "INT UNSIGNED NULL");
             MigrateLegacyTcgJobs(conn);
 
-            foreach (var (name, dayOfWeek, hour, minute) in _defaults)
+            foreach (var (name, dayOfWeek, hour, minute, intervalMinutes) in _defaults)
             {
                 using var seed = conn.CreateCommand();
                 seed.CommandText = """
-                    INSERT IGNORE INTO scheduled_jobs (name, enabled, day_of_week, hour, minute)
-                    VALUES (@name, 1, @dow, @hour, @minute)
+                    INSERT IGNORE INTO scheduled_jobs (name, enabled, day_of_week, hour, minute, interval_minutes)
+                    VALUES (@name, 1, @dow, @hour, @minute, @intervalMinutes)
                     """;
                 seed.Parameters.AddWithValue("@name", name);
                 seed.Parameters.AddWithValue("@dow", (object?)dayOfWeek ?? DBNull.Value);
                 seed.Parameters.AddWithValue("@hour", hour);
                 seed.Parameters.AddWithValue("@minute", minute);
+                seed.Parameters.AddWithValue("@intervalMinutes", (object?)intervalMinutes ?? DBNull.Value);
                 seed.ExecuteNonQuery();
             }
+
+            using var migrateIntervals = conn.CreateCommand();
+            migrateIntervals.CommandText = """
+                UPDATE scheduled_jobs
+                SET interval_minutes = CASE
+                    WHEN name = @serverAvailability THEN 1
+                    WHEN name = @tcg THEN 60
+                    ELSE interval_minutes
+                END
+                WHERE interval_minutes IS NULL
+                  AND name IN (@serverAvailability, @tcg)
+                """;
+            migrateIntervals.Parameters.AddWithValue("@serverAvailability", Constants.Jobs.ServerAvailability);
+            migrateIntervals.Parameters.AddWithValue("@tcg", Constants.Jobs.Tcg);
+            migrateIntervals.ExecuteNonQuery();
 
             // Migration: FitnessWeekly was seeded as Monday (1), update to Sunday (0)
             using var migrate = conn.CreateCommand();
             migrate.CommandText = "UPDATE scheduled_jobs SET day_of_week = 0 WHERE name = @name AND day_of_week = 1";
             migrate.Parameters.AddWithValue("@name", Constants.Jobs.FitnessWeekly);
             migrate.ExecuteNonQuery();
+        }
+
+        private static void EnsureColumn(MySqlConnection conn, string columnName, string definition)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                SELECT COUNT(*)
+                FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = 'scheduled_jobs'
+                  AND COLUMN_NAME = @columnName
+                """;
+            cmd.Parameters.AddWithValue("@columnName", columnName);
+            var exists = Convert.ToInt32(cmd.ExecuteScalar()) > 0;
+            if (exists) return;
+
+            using var alter = conn.CreateCommand();
+            alter.CommandText = $"ALTER TABLE scheduled_jobs ADD COLUMN {columnName} {definition}";
+            alter.ExecuteNonQuery();
         }
 
         private static void MigrateLegacyTcgJobs(MySqlConnection conn)
@@ -139,7 +177,7 @@ namespace dev_library.Data
             using var conn = new MySqlConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT name, enabled, day_of_week, hour, minute, last_run FROM scheduled_jobs";
+            cmd.CommandText = "SELECT name, enabled, day_of_week, hour, minute, interval_minutes, last_run FROM scheduled_jobs";
             using var reader = cmd.ExecuteReader();
             var result = new List<ScheduledJob>();
             while (reader.Read())
@@ -150,6 +188,7 @@ namespace dev_library.Data
                     DayOfWeek = reader.IsDBNull(reader.GetOrdinal("day_of_week")) ? null : (int?)reader.GetInt32("day_of_week"),
                     Hour      = reader.GetInt32("hour"),
                     Minute    = reader.GetInt32("minute"),
+                    IntervalMinutes = reader.IsDBNull(reader.GetOrdinal("interval_minutes")) ? null : (int?)reader.GetInt32("interval_minutes"),
                     LastRun   = reader.IsDBNull(reader.GetOrdinal("last_run")) ? null : reader.GetDateTime("last_run"),
                 });
             return result;
@@ -183,7 +222,7 @@ namespace dev_library.Data
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
                 UPDATE scheduled_jobs
-                SET enabled = @enabled, day_of_week = @dow, hour = @hour, minute = @minute
+                SET enabled = @enabled, day_of_week = @dow, hour = @hour, minute = @minute, interval_minutes = @intervalMinutes
                 WHERE name = @name
                 """;
             cmd.Parameters.AddWithValue("@name",    job.Name);
@@ -191,20 +230,32 @@ namespace dev_library.Data
             cmd.Parameters.AddWithValue("@dow",     (object?)job.DayOfWeek ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@hour",    job.Hour);
             cmd.Parameters.AddWithValue("@minute",  job.Minute);
+            cmd.Parameters.AddWithValue("@intervalMinutes", (object?)job.IntervalMinutes ?? DBNull.Value);
             cmd.ExecuteNonQuery();
         }
 
         // now = local/zoned time used for day-of-week / hour / minute matching
-        public bool ShouldRun(ScheduledJob job, DateTime now) =>
-            job.Enabled &&
-            (job.DayOfWeek == null || job.DayOfWeek == (int)now.DayOfWeek) &&
-            job.Hour   == now.Hour &&
-            job.Minute == now.Minute &&
-            (job.LastRun == null || (DateTime.UtcNow - job.LastRun.Value).TotalMinutes >= 1);
+        public bool ShouldRun(ScheduledJob job, DateTime now)
+        {
+            if (!job.Enabled) return false;
+            if (job.DayOfWeek != null && job.DayOfWeek != (int)now.DayOfWeek) return false;
+
+            if (job.IntervalMinutes is > 0)
+            {
+                if (now.TimeOfDay < new TimeSpan(job.Hour, job.Minute, 0)) return false;
+                return job.LastRun == null ||
+                    (DateTime.UtcNow - job.LastRun.Value).TotalMinutes >= job.IntervalMinutes.Value;
+            }
+
+            return job.Hour == now.Hour &&
+                job.Minute == now.Minute &&
+                (job.LastRun == null || (DateTime.UtcNow - job.LastRun.Value).TotalMinutes >= 1);
+        }
 
         // True if the job is enabled, the configured hour:minute matches now, and has not yet run today (Eastern date).
         public bool ShouldRunToday(ScheduledJob job, DateTime nowEastern, TimeZoneInfo tz)
         {
+            if (job.IntervalMinutes is > 0) return ShouldRun(job, nowEastern);
             if (!job.Enabled) return false;
             if (job.Hour != nowEastern.Hour || job.Minute != nowEastern.Minute) return false;
             if (job.LastRun == null) return true;
@@ -216,6 +267,7 @@ namespace dev_library.Data
         // True if the job is enabled, configured hour:minute matches, today matches the configured day-of-week, and has not yet run this week.
         public bool ShouldRunThisWeek(ScheduledJob job, DateTime nowEastern, TimeZoneInfo tz)
         {
+            if (job.IntervalMinutes is > 0) return ShouldRun(job, nowEastern);
             if (!job.Enabled) return false;
 
             // Only fire on the configured day (default Sunday)

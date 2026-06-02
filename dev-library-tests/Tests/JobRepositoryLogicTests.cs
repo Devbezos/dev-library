@@ -94,6 +94,54 @@ public class JobRepositoryLogicTests
         Assert.True(Repo().ShouldRun(job, now));
     }
 
+    [Fact]
+    public void ShouldRun_WithInterval_BeforeStartTime_ReturnsFalse()
+    {
+        var job = new ScheduledJob { Name = "x", Enabled = true, Hour = 10, Minute = 0, IntervalMinutes = 15 };
+        var now = new DateTime(2026, 1, 5, 9, 59, 0);
+        Assert.False(Repo().ShouldRun(job, now));
+    }
+
+    [Fact]
+    public void ShouldRun_WithInterval_NeverRanAfterStartTime_ReturnsTrue()
+    {
+        var job = new ScheduledJob { Name = "x", Enabled = true, Hour = 10, Minute = 0, IntervalMinutes = 15 };
+        var now = new DateTime(2026, 1, 5, 10, 1, 0);
+        Assert.True(Repo().ShouldRun(job, now));
+    }
+
+    [Fact]
+    public void ShouldRun_WithInterval_WaitsUntilIntervalHasElapsed()
+    {
+        var job = new ScheduledJob
+        {
+            Name = "x",
+            Enabled = true,
+            Hour = 10,
+            Minute = 0,
+            IntervalMinutes = 15,
+            LastRun = DateTime.UtcNow.AddMinutes(-10)
+        };
+        var now = new DateTime(2026, 1, 5, 10, 30, 0);
+        Assert.False(Repo().ShouldRun(job, now));
+    }
+
+    [Fact]
+    public void ShouldRun_WithInterval_RunsAfterIntervalHasElapsed()
+    {
+        var job = new ScheduledJob
+        {
+            Name = "x",
+            Enabled = true,
+            Hour = 10,
+            Minute = 0,
+            IntervalMinutes = 15,
+            LastRun = DateTime.UtcNow.AddMinutes(-16)
+        };
+        var now = new DateTime(2026, 1, 5, 10, 30, 0);
+        Assert.True(Repo().ShouldRun(job, now));
+    }
+
     // ─── ShouldRunToday ───────────────────────────────────────────────────────
 
     [Fact]

@@ -29,6 +29,9 @@
   <ItemGroup>
     <Folder Include="Data\Fitness\" />
     <Compile Remove="dev-library-tests\**" />
+    <Compile Remove="dev-client\**" />
+    <EmbeddedResource Remove="dev-client\**" />
+    <None Remove="dev-client\**" />
   </ItemGroup>
 
 </Project>
