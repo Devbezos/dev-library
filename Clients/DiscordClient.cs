@@ -2,6 +2,7 @@
 using dev_library.Data;
 using dev_library.Data.Discord;
 using Discord;
+using FuzzySharp;
 using Serilog;
 using System.Collections.Concurrent;
 using System.Text;
@@ -14,6 +15,7 @@ namespace dev_refined.Clients
         private static readonly ILogger Logger = Log.ForContext<DiscordClient>();
 
         public const string TcgMessageHeader = "TCG Stock Monitor";
+        private const int TcgFuzzyGroupScoreThreshold = 90;
         public static Func<ulong, string, Task>? SendMessageAsync { get; set; }
         public static Func<ulong, string, Task<ulong>>? SendMessageWithIdAsync { get; set; }
         public static Func<ulong, ulong, string, Task>? EditMessageAsync { get; set; }
@@ -284,14 +286,11 @@ namespace dev_refined.Clients
         private static List<Embed> BuildTcgEmbeds(List<Search> searchResults)
         {
             var itemBlocks = new List<List<string>>();
-            var items = searchResults
-                .SelectMany(s => s.Products.Select(p => new { s.Store, Product = p }))
-                .GroupBy(x => x.Product.Name)
-                .OrderBy(g => g.Key);
+            var itemGroups = BuildFuzzyItemGroups(searchResults);
 
-            foreach (var itemGroup in items)
+            foreach (var itemGroup in itemGroups)
             {
-                var block = new List<string> { $"- {itemGroup.Key}" };
+                var block = new List<string> { $"- {PickDisplayName(itemGroup.Select(x => x.Product.Name))}" };
 
                 var storeListings = itemGroup
                     .GroupBy(x => new { x.Store, x.Product.Price, x.Product.Url })
@@ -325,6 +324,60 @@ namespace dev_refined.Clients
 
             return embeds;
         }
+
+        private static List<List<Listing>> BuildFuzzyItemGroups(List<Search> searchResults)
+        {
+            var groups = new List<List<Listing>>();
+            var listings = searchResults
+                .SelectMany(s => s.Products.Select(p => new Listing(s.Store, p, NormalizeFuzzyProductName(p.Name))))
+                .OrderBy(x => x.Product.Name)
+                .ThenBy(x => x.Store)
+                .ToList();
+
+            foreach (var listing in listings)
+            {
+                var bestGroup = groups
+                    .Select(g => new
+                    {
+                        Group = g,
+                        Score = g.Max(existing => GetFuzzyGroupScore(listing.NormalizedName, existing.NormalizedName))
+                    })
+                    .Where(x => x.Score >= TcgFuzzyGroupScoreThreshold)
+                    .OrderByDescending(x => x.Score)
+                    .ThenBy(x => PickDisplayName(x.Group.Select(g => g.Product.Name)))
+                    .FirstOrDefault();
+
+                if (bestGroup == null)
+                    groups.Add([listing]);
+                else
+                    bestGroup.Group.Add(listing);
+            }
+
+            return groups
+                .OrderBy(g => PickDisplayName(g.Select(x => x.Product.Name)))
+                .ToList();
+        }
+
+        private static string NormalizeFuzzyProductName(string name)
+        {
+            var normalized = TcgProductGroupRepository.NormalizeGroupKey(name);
+            return string.IsNullOrWhiteSpace(normalized) ? name.Trim().ToLowerInvariant() : normalized;
+        }
+
+        private static int GetFuzzyGroupScore(string left, string right)
+        {
+            var sharedTokenScore = Fuzz.TokenSetRatio(left, right);
+            var fullNameScore = Fuzz.TokenSortRatio(left, right);
+            return Math.Min(sharedTokenScore, fullNameScore);
+        }
+
+        private sealed record Listing(string Store, Product Product, string NormalizedName);
+
+        private static string PickDisplayName(IEnumerable<string> names) =>
+            names.Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(n => n.Length)
+                .ThenBy(n => n)
+                .First();
 
         private static List<string> BuildEmbedDescriptions(List<List<string>> itemBlocks)
         {
