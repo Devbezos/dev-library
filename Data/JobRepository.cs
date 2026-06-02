@@ -29,7 +29,8 @@ namespace dev_library.Data
             (Constants.Jobs.KeyAudit,            null, 0,  0, null), // timing controlled by Helpers.IsKeyAuditTime
             (Constants.Jobs.PokemonTcg,          null, 10, 0, 60),   // every hour after 10:00
             (Constants.Jobs.GundamTcg,           null, 10, 0, 60),   // every hour after 10:00
-            (Constants.Jobs.PreorderTcg,         null, 10, 0, 60),   // every hour after 10:00
+            (Constants.Jobs.PokemonPreorderTcg,  null, 10, 0, 60),   // every hour after 10:00
+            (Constants.Jobs.GundamPreorderTcg,   null, 10, 0, 60),   // every hour after 10:00
         ];
 
         public void EnsureTable()
@@ -73,17 +74,19 @@ namespace dev_library.Data
                 UPDATE scheduled_jobs
                 SET interval_minutes = CASE
                     WHEN name = @serverAvailability THEN 1
-                    WHEN name IN (@tcg, @pokemonTcg, @gundamTcg, @preorderTcg) THEN 60
+                    WHEN name IN (@tcg, @pokemonTcg, @gundamTcg, @preorderTcg, @pokemonPreorderTcg, @gundamPreorderTcg) THEN 60
                     ELSE interval_minutes
                 END
                 WHERE interval_minutes IS NULL
-                  AND name IN (@serverAvailability, @tcg, @pokemonTcg, @gundamTcg, @preorderTcg)
+                  AND name IN (@serverAvailability, @tcg, @pokemonTcg, @gundamTcg, @preorderTcg, @pokemonPreorderTcg, @gundamPreorderTcg)
                 """;
             migrateIntervals.Parameters.AddWithValue("@serverAvailability", Constants.Jobs.ServerAvailability);
             migrateIntervals.Parameters.AddWithValue("@tcg", Constants.Jobs.Tcg);
             migrateIntervals.Parameters.AddWithValue("@pokemonTcg", Constants.Jobs.PokemonTcg);
             migrateIntervals.Parameters.AddWithValue("@gundamTcg", Constants.Jobs.GundamTcg);
             migrateIntervals.Parameters.AddWithValue("@preorderTcg", Constants.Jobs.PreorderTcg);
+            migrateIntervals.Parameters.AddWithValue("@pokemonPreorderTcg", Constants.Jobs.PokemonPreorderTcg);
+            migrateIntervals.Parameters.AddWithValue("@gundamPreorderTcg", Constants.Jobs.GundamPreorderTcg);
             migrateIntervals.ExecuteNonQuery();
 
             // Migration: FitnessWeekly was seeded as Monday (1), update to Sunday (0)
@@ -118,11 +121,13 @@ namespace dev_library.Data
             select.CommandText = """
                 SELECT name, enabled, day_of_week, hour, minute, interval_minutes, last_run
                 FROM scheduled_jobs
-                WHERE name IN (@pokemon, @gundam, @preorder, @tcg)
+                WHERE name IN (@pokemon, @gundam, @preorder, @pokemonPreorder, @gundamPreorder, @tcg)
                 """;
             select.Parameters.AddWithValue("@pokemon", Constants.Jobs.PokemonTcg);
             select.Parameters.AddWithValue("@gundam", Constants.Jobs.GundamTcg);
             select.Parameters.AddWithValue("@preorder", Constants.Jobs.PreorderTcg);
+            select.Parameters.AddWithValue("@pokemonPreorder", Constants.Jobs.PokemonPreorderTcg);
+            select.Parameters.AddWithValue("@gundamPreorder", Constants.Jobs.GundamPreorderTcg);
             select.Parameters.AddWithValue("@tcg", Constants.Jobs.Tcg);
 
             var rows = new List<ScheduledJob>();
@@ -148,12 +153,21 @@ namespace dev_library.Data
             {
                 InsertTcgJobFromLegacy(conn, Constants.Jobs.PokemonTcg, legacyTcg);
                 InsertTcgJobFromLegacy(conn, Constants.Jobs.GundamTcg, legacyTcg);
-                InsertTcgJobFromLegacy(conn, Constants.Jobs.PreorderTcg, legacyTcg);
+                InsertTcgJobFromLegacy(conn, Constants.Jobs.PokemonPreorderTcg, legacyTcg);
+                InsertTcgJobFromLegacy(conn, Constants.Jobs.GundamPreorderTcg, legacyTcg);
+            }
+
+            var legacyPreorder = rows.FirstOrDefault(r => r.Name == Constants.Jobs.PreorderTcg);
+            if (legacyPreorder != null)
+            {
+                InsertTcgJobFromLegacy(conn, Constants.Jobs.PokemonPreorderTcg, legacyPreorder);
+                InsertTcgJobFromLegacy(conn, Constants.Jobs.GundamPreorderTcg, legacyPreorder);
             }
 
             using var delete = conn.CreateCommand();
-            delete.CommandText = "DELETE FROM scheduled_jobs WHERE name = @tcg";
+            delete.CommandText = "DELETE FROM scheduled_jobs WHERE name IN (@tcg, @preorder)";
             delete.Parameters.AddWithValue("@tcg", Constants.Jobs.Tcg);
+            delete.Parameters.AddWithValue("@preorder", Constants.Jobs.PreorderTcg);
             delete.ExecuteNonQuery();
         }
 

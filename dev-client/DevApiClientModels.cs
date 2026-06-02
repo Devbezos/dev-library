@@ -54,7 +54,9 @@ public sealed record TcgChannelSettings(
     string PreorderChannelId,
     string[] PokemonNotificationUserIds,
     string[] GundamNotificationUserIds,
-    string[] PreorderNotificationUserIds);
+    string[] PreorderNotificationUserIds,
+    string[] PokemonPreorderNotificationUserIds,
+    string[] GundamPreorderNotificationUserIds);
 
 public sealed record TcgChannel(string Game, string ChannelId, string[] NotificationUserIds);
 

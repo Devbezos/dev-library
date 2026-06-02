@@ -35,6 +35,7 @@ namespace dev_library.Data
                 """;
             cmd.ExecuteNonQuery();
             EnsureColumn(conn, "notification_user_ids", "TEXT NULL");
+            MigratePreorderNotificationUsers(conn);
         }
 
         public ulong GetChannelId(string game)
@@ -154,6 +155,33 @@ namespace dev_library.Data
             using var add = conn.CreateCommand();
             add.CommandText = $"ALTER TABLE tcg_channel_settings ADD COLUMN {columnName} {definition}";
             add.ExecuteNonQuery();
+        }
+
+        private static void MigratePreorderNotificationUsers(MySqlConnection conn)
+        {
+            using var select = conn.CreateCommand();
+            select.CommandText = """
+                SELECT notification_user_ids
+                FROM tcg_channel_settings
+                WHERE game = 'preorder'
+                  AND notification_user_ids IS NOT NULL
+                  AND notification_user_ids <> ''
+                LIMIT 1
+                """;
+            var userIds = Convert.ToString(select.ExecuteScalar()) ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(userIds)) return;
+
+            foreach (var game in new[] { "pokemon_preorder", "gundam_preorder" })
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = """
+                    INSERT IGNORE INTO tcg_channel_settings (game, channel_id, notification_user_ids)
+                    VALUES (@game, 0, @userIds)
+                    """;
+                cmd.Parameters.AddWithValue("@game", game);
+                cmd.Parameters.AddWithValue("@userIds", userIds);
+                cmd.ExecuteNonQuery();
+            }
         }
     }
 }
