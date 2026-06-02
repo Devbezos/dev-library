@@ -19,6 +19,12 @@ namespace dev_library.Clients
             var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
             {
                 Headless = true,
+                Args =
+                [
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-dev-shm-usage",
+                    "--no-sandbox"
+                ]
             });
 
             return new PlaywrightBrowser(playwright, browser);
@@ -43,6 +49,13 @@ namespace dev_library.Clients
             try
             {
                 var page = await context.NewPageAsync();
+                await page.AddInitScriptAsync("""
+                    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                    Object.defineProperty(navigator, 'languages', { get: () => ['en-CA', 'en-US', 'en'] });
+                    Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+                    window.chrome = window.chrome || { runtime: {} };
+                """);
+
                 await page.RouteAsync("**/*", async route =>
                 {
                     var type = route.Request.ResourceType;

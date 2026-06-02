@@ -77,6 +77,23 @@ namespace dev_library.Clients
                 return [];
             }
 
+            await page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions { Timeout = 15000 });
+
+            var content = await page.ContentAsync();
+            if (IsBotCheckPage(content))
+            {
+                Logger.Warning("GetPokemon: Walmart bot-check page detected for {Url}; attempting challenge", url);
+                await TrySolvePerimeterXChallenge(page);
+                await page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions { Timeout = 20000 });
+                content = await page.ContentAsync();
+
+                if (IsBotCheckPage(content))
+                {
+                    Logger.Warning("GetPokemon: Walmart bot-check challenge not solved for {Url}", url);
+                    return [];
+                }
+            }
+
             try
             {
                 await page.WaitForSelectorAsync(
@@ -89,43 +106,104 @@ namespace dev_library.Clients
                 return [];
             }
 
-            var content = await page.ContentAsync();
             var doc = new HtmlDocument();
             doc.LoadHtml(content);
 
             var productNodes = doc.DocumentNode.SelectNodes("//*[@role='group' and @data-item-id]");
-            if (productNodes == null || productNodes.Count == 0)
+            var fallbackLinks = doc.DocumentNode.SelectNodes("//a[contains(@href, '/en/ip/') or contains(@href, '/ip/')]");
+            if ((productNodes == null || productNodes.Count == 0) && (fallbackLinks == null || fallbackLinks.Count == 0))
                 return [];
 
             var products = new List<Product>();
             var seenUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var tile in productNodes)
+
+            if (productNodes != null)
             {
-                if (IsSoldOut(tile)) continue;
+                foreach (var tile in productNodes)
+                {
+                    if (IsSoldOut(tile)) continue;
 
-                var link = tile.SelectSingleNode(".//a[contains(@href, '/en/ip/') or contains(@href, '/ip/')]");
-                if (link == null) continue;
+                    var link = tile.SelectSingleNode(".//a[contains(@href, '/en/ip/') or contains(@href, '/ip/')]");
+                    if (link == null) continue;
 
-                var href = link.GetAttributeValue("href", "");
-                var productUrl = NormalizeUrl(href);
-                if (string.IsNullOrWhiteSpace(href) || !seenUrls.Add(productUrl)) continue;
+                    var href = link.GetAttributeValue("href", "");
+                    var productUrl = NormalizeUrl(href);
+                    if (string.IsNullOrWhiteSpace(href) || !seenUrls.Add(productUrl)) continue;
 
-                var name = GetText(tile, ".//*[@data-automation-id='product-title']")
-                    ?? GetText(tile, ".//*[@data-testid='product-title']")
-                    ?? link.GetAttributeValue("aria-label", "").Trim()
-                    ?? link.GetAttributeValue("title", "").Trim();
-                var price = GetText(tile, ".//*[@data-automation-id='product-price']//*[@aria-hidden='true' and contains(., '$')]")
-                    ?? GetText(tile, ".//*[@data-automation-id='product-price']")
-                    ?? GetText(tile, ".//*[@data-testid='product-price']")
-                    ?? GetText(tile, ".//*[contains(@class, 'price')]");
+                    var name = GetText(tile, ".//*[@data-automation-id='product-title']")
+                        ?? GetText(tile, ".//*[@data-testid='product-title']")
+                        ?? link.GetAttributeValue("aria-label", "").Trim()
+                        ?? link.GetAttributeValue("title", "").Trim();
+                    var price = GetText(tile, ".//*[@data-automation-id='product-price']//*[@aria-hidden='true' and contains(., '$')]")
+                        ?? GetText(tile, ".//*[@data-automation-id='product-price']")
+                        ?? GetText(tile, ".//*[@data-testid='product-price']")
+                        ?? GetText(tile, ".//*[contains(@class, 'price')]");
 
-                if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(price)) continue;
-                if (!IsPokemonProduct(name)) continue;
+                    if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(price)) continue;
+                    if (!IsPokemonProduct(name)) continue;
 
-                products.Add(new Product(name, CleanPrice(price), productUrl));
+                    products.Add(new Product(name, CleanPrice(price), productUrl));
+                }
             }
 
+            if (products.Count == 0 && fallbackLinks != null)
+            {
+                foreach (var link in fallbackLinks)
+                {
+                    var href = link.GetAttributeValue("href", "");
+                    var productUrl = NormalizeUrl(href);
+                    if (string.IsNullOrWhiteSpace(href) || !seenUrls.Add(productUrl)) continue;
+
+                    var card = link.SelectSingleNode("ancestor::*[@role='group' or self::article or contains(@class, 'tile') or contains(@class, 'product')][1]") ?? link.ParentNode;
+                    if (card == null || IsSoldOut(card)) continue;
+
+                    var name = link.GetAttributeValue("aria-label", "").Trim();
+                    if (string.IsNullOrWhiteSpace(name)) name = link.GetAttributeValue("title", "").Trim();
+                    if (string.IsNullOrWhiteSpace(name)) name = GetText(card, ".//*[@data-automation-id='product-title']") ?? GetText(card, ".//*[@data-testid='product-title']") ?? link.InnerText.Trim();
+
+                    var rawBlockText = HtmlEntity.DeEntitize(card.InnerText);
+                    var priceMatch = Regex.Match(rawBlockText, @"\$\s*\d+(?:,\d{3})*(?:\.\d{2})?");
+                    var price = priceMatch.Success ? priceMatch.Value : string.Empty;
+
+                    if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(price)) continue;
+                    if (!IsPokemonProduct(name)) continue;
+
+                    products.Add(new Product(name, CleanPrice(price), productUrl));
+                }
+            }
+
+            Logger.Information("GetPokemon: Parsed {Count} Walmart product(s)", products.Count);
             return products;
+        }
+
+        private static bool IsBotCheckPage(string content) =>
+            content.Contains("We like real shoppers, not robots!", StringComparison.OrdinalIgnoreCase)
+            || content.Contains("px-captcha", StringComparison.OrdinalIgnoreCase)
+            || content.Contains("verify yourself", StringComparison.OrdinalIgnoreCase);
+
+        private static async Task TrySolvePerimeterXChallenge(IPage page)
+        {
+            try
+            {
+                var captcha = page.Locator("#px-captcha").First;
+                await captcha.WaitForAsync(new LocatorWaitForOptions { Timeout = 12000, State = WaitForSelectorState.Visible });
+
+                var box = await captcha.BoundingBoxAsync();
+                if (box == null || box.Width <= 1 || box.Height <= 1) return;
+
+                var x = box.X + (box.Width / 2);
+                var y = box.Y + (box.Height / 2);
+
+                await page.Mouse.MoveAsync(x, y);
+                await page.Mouse.DownAsync();
+                await page.WaitForTimeoutAsync(9000);
+                await page.Mouse.UpAsync();
+                await page.WaitForTimeoutAsync(2000);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning(ex, "GetPokemon: Failed to perform Walmart captcha hold action");
+            }
         }
 
         private static bool IsSoldOut(HtmlNode tile)

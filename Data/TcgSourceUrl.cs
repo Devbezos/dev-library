@@ -31,6 +31,7 @@ namespace dev_library.Data
         [
             ("401Games", "pokemon", "Booster Boxes", "https://store.401games.ca/collections/pokemon-trading-cards?sort=price_max_to_min&filters=Product+Type,Product+Type_Booster+Boxes,Price_from_to,66-400,In+Stock,True"),
             ("401Games", "pokemon", "New Releases", "https://store.401games.ca/collections/pokemon-new-releases?sort=price_max_to_min&filters=In+Stock,True,Category,Pokemon+Sealed+Product"),
+            ("401Games", "pokemon", "Pre-Order", "https://hobbiesville.com/collections/pokemon-pre-orders-1"),
             ("Atlas", "pokemon", "Booster Boxes", "https://www.atlascollectables.com/catalog/pokemon-pokemon_sealed_products-pokemon_booster_boxes/386?filter_by_stock=in-stock"),
             ("Atlas", "gundam", "Booster Boxes", "https://www.atlascollectables.com/catalog/gundam_card_game-gundam_card_game__sealed-gundam_card_game__booster_boxes/16227?filter_by_stock=in-stock"),
             ("Chimera", "pokemon", "Pokemon Collection", "https://chimeragamingonline.com/collections/pokemon?filter.v.availability=1&filter.v.price.gte=20&filter.v.price.lte=&page={0}"),
@@ -39,6 +40,7 @@ namespace dev_library.Data
             ("Dollys", "pokemon", "Box Sets / Bundles", "https://www.dollys.ca/catalog/pokemon_products-pokemon_box_sets/3473?filter_by_stock=in-stock"),
             ("Dollys", "gundam", "Booster Boxes", "https://www.dollys.ca/catalog/gundam_card_game_products-gundam_card_game_booster_boxes/6764?filter_by_stock=in-stock"),
             ("EBGames", "pokemon", "Pokemon Search", "https://www.ebgames.ca/SearchResult/QuickSearch?q=Pok%C3%A9mon%20&platform=361&rootGenre=99&shippingMethod=1&release=1&page={0}"),
+            ("HouseOfCards", "pokemon", "Booster Boxes", "https://houseofcards.ca/collections/pokemon-booster-boxes"),
             ("JJ", "pokemon", "Booster Boxes", "https://shop.jjcards.com/search.asp?keyword=pokemon+booster+box&catid="),
             ("Walmart", "pokemon", "Pokemon Cards", "https://www.walmart.ca/en/browse/toys/trading-cards/pokemon-cards/10011_31745_6000204969672?facet=fulfillment_method%3ADelivery%7C%7Cretailer_type%3AWalmart"),
         ];
