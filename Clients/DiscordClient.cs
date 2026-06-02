@@ -24,6 +24,7 @@ namespace dev_refined.Clients
         public static Func<ulong, Task<ulong[]>>? GetTrackedTcgMessageIdsAsync { get; set; }
         public static Func<ulong, ulong[], Task>? SaveTrackedTcgMessageIdsAsync { get; set; }
         public static Func<ulong, Embed, Task>? SendEmbedAsync { get; set; }
+        public static Func<ulong, string, Task>? SendDirectMessageToUserAsync { get; set; }
         public static Func<ulong, string, Task<ulong>>? CreateApplicationChannelAsync { get; set; }
         public static Func<ulong, Embed, Task<ulong>>? SendEmbedWithIdAsync { get; set; }
         public static Func<ulong, ulong, Task>? PinMessageAsync { get; set; }
@@ -275,10 +276,14 @@ namespace dev_refined.Clients
         {
             Logger.Information("SendDirectMessage: START for user {UserId}", userId);
 
-            if (SendMessageAsync != null)
-                await SendMessageAsync(userId, message);
+            if (SendDirectMessageToUserAsync != null)
+            {
+                await SendDirectMessageToUserAsync(userId, message);
+            }
             else
-                Logger.Warning("SendDirectMessage: SendMessageAsync not wired up. UserId: {UserId}", userId);
+            {
+                Logger.Warning("SendDirectMessage: SendDirectMessageToUserAsync not wired up. UserId: {UserId}", userId);
+            }
 
             Logger.Information("SendDirectMessage: END for user {UserId}", userId);
         }
