@@ -126,6 +126,7 @@ namespace dev_library.Data
             conn.Open();
 
             using var tx = conn.BeginTransaction();
+            int storeId = 0;
             try
             {
                 // Ensure store exists.
@@ -141,7 +142,7 @@ namespace dev_library.Data
                 sid.Transaction = tx;
                 sid.CommandText = "SELECT id FROM tcg_stores WHERE name = @name LIMIT 1";
                 sid.Parameters.AddWithValue("@name", sourceUrl.Store);
-                var storeId = Convert.ToInt32(sid.ExecuteScalar());
+                storeId = Convert.ToInt32(sid.ExecuteScalar());
 
                 using var cmd = conn.CreateCommand();
                 cmd.Transaction = tx;
@@ -155,6 +156,41 @@ namespace dev_library.Data
                 var id = (int)cmd.LastInsertedId;
                 tx.Commit();
                 return id;
+            }
+            catch (MySqlException mex) when (mex.Number == 1062)
+            {
+                // Duplicate entry; attempt to find the existing row and return its id.
+                tx.Rollback();
+                using var find = conn.CreateCommand();
+                // Match on store_id, game and the first 255 chars of url (the unique index uses url(255)).
+                find.CommandText = "SELECT id FROM tcg_store_urls WHERE store_id = @store_id AND game = @game AND LEFT(url,255) = LEFT(@url,255) LIMIT 1";
+                find.Parameters.AddWithValue("@store_id", storeId);
+                find.Parameters.AddWithValue("@game", sourceUrl.Game);
+                find.Parameters.AddWithValue("@url", sourceUrl.Url);
+                var existing = find.ExecuteScalar();
+                if ((existing == null || existing == DBNull.Value) && storeId == 0)
+                {
+                    using var lookup = conn.CreateCommand();
+                    lookup.CommandText = "SELECT id FROM tcg_stores WHERE name = @name LIMIT 1";
+                    lookup.Parameters.AddWithValue("@name", sourceUrl.Store);
+                    var sidFound = lookup.ExecuteScalar();
+                    if (sidFound != null && sidFound != DBNull.Value)
+                    {
+                        storeId = Convert.ToInt32(sidFound);
+                        find.Parameters.Clear();
+                        find.CommandText = "SELECT id FROM tcg_store_urls WHERE store_id = @store_id AND game = @game AND LEFT(url,255) = LEFT(@url,255) LIMIT 1";
+                        find.Parameters.AddWithValue("@store_id", storeId);
+                        find.Parameters.AddWithValue("@game", sourceUrl.Game);
+                        find.Parameters.AddWithValue("@url", sourceUrl.Url);
+                        existing = find.ExecuteScalar();
+                    }
+                }
+                if (existing != null && existing != DBNull.Value)
+                {
+                    return Convert.ToInt32(existing);
+                }
+                // If we couldn't find it for some reason, rethrow the original exception.
+                throw;
             }
             catch
             {
