@@ -1,4 +1,7 @@
 using MySqlConnector;
+using System.IO;
+using System.Text.Json;
+using System.Collections.Generic;
 
 namespace dev_library.Data
 {
@@ -28,29 +31,9 @@ namespace dev_library.Data
 
         public TcgSourceUrlRepository(string connectionString) => _connectionString = connectionString;
 
-        private static readonly (string Store, string Game, string Category, string Url)[] _defaults =
-        [
-            ("CanadaComputers", "pokemon", "Catalog", "https://www.canadacomputers.com/en/2022/trading-cards-boosters?id_manufacturer=3041&ship=1"),
-            ("401Games", "pokemon", "Booster Boxes", "https://store.401games.ca/collections/pokemon-trading-cards?sort=price_max_to_min&filters=Product+Type,Product+Type_Booster+Boxes,Price_from_to,66-400,In+Stock,True"),
-            ("401Games", "pokemon", "New Releases", "https://store.401games.ca/collections/pokemon-new-releases?sort=price_max_to_min&filters=In+Stock,True,Category,Pokemon+Sealed+Product"),
-            ("Hobbiesville", "pokemon", "Pre-Order", "https://hobbiesville.com/collections/pokemon-pre-orders-1"),
-            ("Atlas", "pokemon", "Booster Boxes", "https://www.atlascollectables.com/catalog/pokemon-pokemon_sealed_products-pokemon_booster_boxes/386?filter_by_stock=in-stock"),
-            ("Atlas", "gundam", "Booster Boxes", "https://www.atlascollectables.com/catalog/gundam_card_game-gundam_card_game__sealed-gundam_card_game__booster_boxes/16227?filter_by_stock=in-stock"),
-            ("Chimera", "pokemon", "Pokemon Collection", "https://chimeragamingonline.com/collections/pokemon?filter.v.availability=1&filter.v.price.gte=20&filter.v.price.lte=&page={0}"),
-            ("DarkFoxTCG", "pokemon", "Pokemon Sealed Product", "https://www.darkfoxtcg.com/collections/pokemon-sealed-product?product_line=All&sort=Sales&limit=30&shopify_collection_id=270727676057&min_price=20"),
-            ("Dollys", "pokemon", "ETBs", "https://www.dollys.ca/catalog/pokemon_products-pokemon_elite_trainer_boxes/6218?filter_by_stock=in-stock"),
-            ("Dollys", "pokemon", "Booster Boxes", "https://www.dollys.ca/catalog/pokemon_products-pokemon_booster_boxes/4033?filter_by_stock=in-stock"),
-            ("Dollys", "pokemon", "Box Sets / Bundles", "https://www.dollys.ca/catalog/pokemon_products-pokemon_box_sets/3473?filter_by_stock=in-stock"),
-            ("Dollys", "gundam", "Booster Boxes", "https://www.dollys.ca/catalog/gundam_card_game_products-gundam_card_game_booster_boxes/6764?filter_by_stock=in-stock"),
-            ("EBGames", "pokemon", "Pokemon Search", "https://www.ebgames.ca/SearchResult/QuickSearch?q=Pok%C3%A9mon%20&platform=361&rootGenre=99&shippingMethod=1&release=1&page={0}"),
-            ("EnterTheBattlefield", "pokemon", "Pokemon Sealed", "https://enterthebattlefield.ca/collections/pokemon-sealed?product_line=All&sort=Sales&limit=30&shopify_collection_id=297793978539&min_price=20"),
-            ("HouseOfCards", "pokemon", "Booster Boxes", "https://houseofcards.ca/collections/pokemon-booster-boxes"),
-            ("JJ", "pokemon", "Booster Boxes", "https://shop.jjcards.com/search.asp?keyword=pokemon+booster+box&catid="),
-            ("TopShelfCo", "pokemon", "Other Pokemon", "https://topshelfco.ca/collections/other-pokemon"),
-            ("TopShelfCo", "gundam", "Bandai Gundam CG", "https://topshelfco.ca/collections/bandai-gundam-cg"),
-            ("Untouchables", "gundam", "Gundam Card Game", "https://untouchables.ca/collections/gundam-card-game"),
-            ("Walmart", "pokemon", "Pokemon Cards", "https://www.walmart.ca/en/browse/toys/trading-cards/pokemon-cards/10011_31745_6000204969672?facet=fulfillment_method%3ADelivery%7C%7Cretailer_type%3AWalmart"),
-        ];
+        // Defaults are seeded from an external JSON file `tcg_seed_source_urls.json`
+        // placed next to the application's base directory. This avoids hard-coding
+        // store URLs in source and allows editing the seed without recompiling.
 
         public void EnsureTable()
         {
@@ -100,32 +83,35 @@ namespace dev_library.Data
                 addIndex.ExecuteNonQuery();
             }
 
-            // Seed stores and urls from defaults using normalized tables.
-            foreach (var d in _defaults)
+            // Seed stores and urls from an external JSON file if present.
+            try
             {
-                // Insert store if not exists.
-                using var seedStore = conn.CreateCommand();
-                seedStore.CommandText = """
-                    INSERT IGNORE INTO tcg_stores (name, display_name)
-                    VALUES (@name, @display_name)
-                    """;
-                seedStore.Parameters.AddWithValue("@name", d.Store);
-                seedStore.Parameters.AddWithValue("@display_name", d.Store);
-                seedStore.ExecuteNonQuery();
+                var seedPath = Path.Combine(AppContext.BaseDirectory, "tcg_seed_source_urls.json");
+                if (File.Exists(seedPath))
+                {
+                    var json = File.ReadAllText(seedPath);
+                    var seedItems = JsonSerializer.Deserialize<List<SeedEntry>>(json) ?? new List<SeedEntry>();
+                    foreach (var d in seedItems)
+                    {
+                        using var seedStore = conn.CreateCommand();
+                        seedStore.CommandText = "INSERT IGNORE INTO tcg_stores (name, display_name) VALUES (@name, @display_name)";
+                        seedStore.Parameters.AddWithValue("@name", d.Store);
+                        seedStore.Parameters.AddWithValue("@display_name", d.Store);
+                        seedStore.ExecuteNonQuery();
 
-                // Insert url linked to store.
-                using var seedUrl = conn.CreateCommand();
-                seedUrl.CommandText = """
-                    INSERT IGNORE INTO tcg_store_urls (store_id, game, category, url, enabled)
-                    VALUES (
-                        (SELECT id FROM tcg_stores WHERE name = @store LIMIT 1),
-                        @game, @category, @url, 1)
-                    """;
-                seedUrl.Parameters.AddWithValue("@store", d.Store);
-                seedUrl.Parameters.AddWithValue("@game", d.Game);
-                seedUrl.Parameters.AddWithValue("@category", d.Category);
-                seedUrl.Parameters.AddWithValue("@url", d.Url);
-                seedUrl.ExecuteNonQuery();
+                        using var seedUrl = conn.CreateCommand();
+                        seedUrl.CommandText = "INSERT IGNORE INTO tcg_store_urls (store_id, game, category, url, enabled) VALUES ((SELECT id FROM tcg_stores WHERE name = @store LIMIT 1), @game, @category, @url, 1)";
+                        seedUrl.Parameters.AddWithValue("@store", d.Store);
+                        seedUrl.Parameters.AddWithValue("@game", d.Game);
+                        seedUrl.Parameters.AddWithValue("@category", d.Category);
+                        seedUrl.Parameters.AddWithValue("@url", d.Url);
+                        seedUrl.ExecuteNonQuery();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"TcgSourceUrlRepository.EnsureTable: failed to seed from JSON: {ex.Message}");
             }
         }
 
@@ -207,6 +193,8 @@ namespace dev_library.Data
                 throw;
             }
         }
+
+        private sealed record SeedEntry(string Store, string Game, string Category, string Url);
 
         public void UpdateUrl(int id, string url)
         {
