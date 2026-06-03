@@ -1,6 +1,4 @@
 using MySqlConnector;
-using System.IO;
-using System.Text.Json;
 using System.Collections.Generic;
 
 namespace dev_library.Data
@@ -83,36 +81,7 @@ namespace dev_library.Data
                 addIndex.ExecuteNonQuery();
             }
 
-            // Seed stores and urls from an external JSON file if present.
-            try
-            {
-                var seedPath = Path.Combine(AppContext.BaseDirectory, "tcg_seed_source_urls.json");
-                if (File.Exists(seedPath))
-                {
-                    var json = File.ReadAllText(seedPath);
-                    var seedItems = JsonSerializer.Deserialize<List<SeedEntry>>(json) ?? new List<SeedEntry>();
-                    foreach (var d in seedItems)
-                    {
-                        using var seedStore = conn.CreateCommand();
-                        seedStore.CommandText = "INSERT IGNORE INTO tcg_stores (name, display_name) VALUES (@name, @display_name)";
-                        seedStore.Parameters.AddWithValue("@name", d.Store);
-                        seedStore.Parameters.AddWithValue("@display_name", d.Store);
-                        seedStore.ExecuteNonQuery();
-
-                        using var seedUrl = conn.CreateCommand();
-                        seedUrl.CommandText = "INSERT IGNORE INTO tcg_store_urls (store_id, game, category, url, enabled) VALUES ((SELECT id FROM tcg_stores WHERE name = @store LIMIT 1), @game, @category, @url, 1)";
-                        seedUrl.Parameters.AddWithValue("@store", d.Store);
-                        seedUrl.Parameters.AddWithValue("@game", d.Game);
-                        seedUrl.Parameters.AddWithValue("@category", d.Category);
-                        seedUrl.Parameters.AddWithValue("@url", d.Url);
-                        seedUrl.ExecuteNonQuery();
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"TcgSourceUrlRepository.EnsureTable: failed to seed from JSON: {ex.Message}");
-            }
+            // No seeding performed here; the application reads configured stores/URLs from the database.
         }
 
         public List<TcgSourceUrl> GetAll(string? game = null, string? store = null, bool enabledOnly = false)
@@ -194,7 +163,7 @@ namespace dev_library.Data
             }
         }
 
-        private sealed record SeedEntry(string Store, string Game, string Category, string Url);
+        
 
         public void UpdateUrl(int id, string url)
         {
