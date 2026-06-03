@@ -501,7 +501,7 @@ namespace dev_library.Clients.Fitness
 
             builder.AddField("😴 Sleep", sleepStr, true);
             builder.AddField("👟 Steps", stepsStr, true);
-            builder.AddField("❤️ Resting HR", hrStr, true);
+            builder.AddField("❤️ Average HR", hrStr, true);
             builder.AddField("🔥 Calories Burnt", caloriesBurntStr, true);
             builder.AddField("🍽️ Calories Eaten", caloriesEatenStr, true);
             builder.AddField("🏃 Activity", activityStr, false);
@@ -561,7 +561,7 @@ namespace dev_library.Clients.Fitness
 
             builder.AddField("😴 Avg Sleep", avgSleepStr, true);
             builder.AddField("👟 Avg Steps", avgStepsStr, true);
-            builder.AddField("❤️ Resting HR", hrStr, true);
+            builder.AddField("❤️ Average HR", hrStr, true);
             builder.AddField("⚖️ Weight", weightStr, true);
             builder.AddField("🔥 Avg Daily Deficit", avgDeficitStr, true);
             builder.AddField("📅 Calorie Logged Days", calorieLoggedStr, true);
@@ -630,7 +630,7 @@ namespace dev_library.Clients.Fitness
 
             builder.AddField("😴 Avg Sleep", avgSleepStr, true);
             builder.AddField("👟 Avg Steps", avgStepsStr, true);
-            builder.AddField("❤️ Resting HR", hrStr, true);
+            builder.AddField("❤️ Average HR", hrStr, true);
             builder.AddField("⚖️ Weight", weightStr, true);
             builder.AddField("🏃 Activity", weekActivityStr, false);
 

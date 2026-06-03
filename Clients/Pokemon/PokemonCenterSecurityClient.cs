@@ -28,10 +28,18 @@ public sealed class PokemonCenterSecurityClient
         "waiting room",
         "waitingroom",
         "queue",
+        "incapsula",
+        "_incapsula_resource",
+        "imperva",
+        "waiting room | pok",
+        "psyduck_waitingroom",
+        "cwudnsai",
+        "swwrgts",
         "akamai",
         "perimeterx",
         "px-captcha",
         "captcha",
+        "capcha",
         "datadome",
         "access denied",
         "bot detection",
@@ -61,7 +69,12 @@ public sealed class PokemonCenterSecurityClient
             m.Contains("waiting", StringComparison.OrdinalIgnoreCase));
         var captchaDetected = markers.Any(m =>
             m.Contains("captcha", StringComparison.OrdinalIgnoreCase) ||
+            m.Contains("capcha", StringComparison.OrdinalIgnoreCase) ||
             m.Contains("perimeter", StringComparison.OrdinalIgnoreCase) ||
+            m.Contains("incapsula", StringComparison.OrdinalIgnoreCase) ||
+            m.Contains("imperva", StringComparison.OrdinalIgnoreCase) ||
+            m.Contains("cwudnsai", StringComparison.OrdinalIgnoreCase) ||
+            m.Contains("swwrgts", StringComparison.OrdinalIgnoreCase) ||
             m.Contains("datadome", StringComparison.OrdinalIgnoreCase));
 
         var serverHeader = string.Join(", ", response.Headers.Server.Select(x => x.ToString()));
