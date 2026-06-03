@@ -6,6 +6,7 @@ namespace dev_library.Clients
     public class CanadaComputersClient
     {
         private static readonly HttpClient client = new();
+        private readonly dev_library.Data.ITcgSourceUrlRepository? _sourceUrlRepo;
         private static readonly string ccSearchUrl = "https://www.canadacomputers.com/en/search?id_category=914&s={0}&a=0&b=0";
         // Trading cards / boosters category URL (with and without ship filter).
         private static readonly string ccTradingCardsUrl = "https://www.canadacomputers.com/en/2022/trading-cards-boosters?id_manufacturer=3041";
@@ -77,6 +78,11 @@ namespace dev_library.Clients
             return searchList;
         }
 
+        public CanadaComputersClient(dev_library.Data.ITcgSourceUrlRepository? sourceUrlRepo = null)
+        {
+            _sourceUrlRepo = sourceUrlRepo;
+        }
+
         public async Task<List<Search>> GetPokemon()
         {
             Console.WriteLine("CanadaComputersClient.GetPokemon: START");
@@ -85,8 +91,35 @@ namespace dev_library.Clients
             var results = new List<Product>();
             try
             {
-                // Try the ship-enabled URL first (the one you requested).
-                var urlsToTry = new[] { ccTradingCardsUrlShip, ccTradingCardsUrl };
+                // If a configured source URL exists in the database for CanadaComputers use it.
+                var configured = _sourceUrlRepo?.GetAll("pokemon", "CanadaComputers", enabledOnly: true)
+                    .Select(u => u.Url)
+                    .ToList();
+
+                if ((configured == null || configured.Count == 0) && _sourceUrlRepo != null)
+                {
+                    // Ensure the preferred ship-enabled URL is stored in DB for future runs.
+                    try
+                    {
+                        _sourceUrlRepo.Add(new dev_library.Data.TcgSourceUrl
+                        {
+                            Store = "CanadaComputers",
+                            Game = "pokemon",
+                            Category = "Catalog",
+                            Url = ccTradingCardsUrlShip,
+                            Enabled = true,
+                        });
+                        configured = new List<string> { ccTradingCardsUrlShip };
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"CanadaComputersClient.GetPokemon: failed to add source URL to repo: {ex.Message}");
+                        configured = new List<string> { ccTradingCardsUrlShip, ccTradingCardsUrl };
+                    }
+                }
+
+                // Try the ship-enabled URL first (the one you requested) unless configured URLs are provided.
+                var urlsToTry = (configured != null && configured.Count > 0) ? configured.ToArray() : new[] { ccTradingCardsUrlShip, ccTradingCardsUrl };
 
                 foreach (var url in urlsToTry)
                 {
