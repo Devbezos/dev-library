@@ -1,0 +1,18 @@
+[
+  {
+    "store": "CanadaComputers",
+    "displayName": "Canada Computers",
+    "game": "pokemon",
+    "category": "boosters",
+    "url": "https://www.canadacomputers.com/search/results.php?search_in_description=1&cat=172&keywords=trading+cards&ship=1",
+    "enabled": true
+  },
+  {
+    "store": "ExampleStore",
+    "displayName": "Example Store",
+    "game": "pokemon",
+    "category": "boosters",
+    "url": "https://example.com/tcg/pokemon/boosters",
+    "enabled": true
+  }
+]
