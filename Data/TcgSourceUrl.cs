@@ -18,6 +18,7 @@ namespace dev_library.Data
         List<TcgSourceUrl> GetAll(string? game = null, string? store = null, bool enabledOnly = false);
         int Add(TcgSourceUrl sourceUrl);
         void UpdateUrl(int id, string url);
+        void UpdateEnabled(int id, bool enabled);
         void Delete(int id);
     }
 
@@ -166,6 +167,18 @@ namespace dev_library.Data
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "UPDATE tcg_source_urls SET url = @url WHERE id = @id";
             cmd.Parameters.AddWithValue("@url", url);
+            cmd.Parameters.AddWithValue("@id", id);
+            cmd.ExecuteNonQuery();
+        }
+
+        public void UpdateEnabled(int id, bool enabled)
+        {
+            using var conn = new MySqlConnection(_connectionString);
+            conn.Open();
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "UPDATE tcg_source_urls SET enabled = @enabled WHERE id = @id";
+            cmd.Parameters.AddWithValue("@enabled", enabled ? 1 : 0);
             cmd.Parameters.AddWithValue("@id", id);
             cmd.ExecuteNonQuery();
         }

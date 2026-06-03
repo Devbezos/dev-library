@@ -37,7 +37,7 @@ namespace dev_library.Clients
                 .GetAll(game, "Dollys", enabledOnly: true)
                 .Select(x => (x.Url, string.IsNullOrWhiteSpace(x.Category) ? "Catalog" : x.Category.Trim()))
                 .ToArray();
-            return configured.Length > 0 ? configured : defaults;
+            return configured;
         }
 
         private static void EnsureHeaders()

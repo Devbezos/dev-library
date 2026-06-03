@@ -35,6 +35,9 @@ namespace dev_library.Clients
                 .Select(u => (u.Url, u.Category))
                 .ToList();
 
+            if (_sourceUrlRepo != null && sourceUrls is { Count: 0 })
+                return [];
+
             if (sourceUrls == null || sourceUrls.Count == 0)
                 sourceUrls = DefaultUrls.ToList();
 
