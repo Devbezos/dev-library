@@ -30,6 +30,7 @@ namespace dev_library.Data
 
         private static readonly (string Store, string Game, string Category, string Url)[] _defaults =
         [
+            ("CanadaComputers", "pokemon", "Catalog", "https://www.canadacomputers.com/en/2022/trading-cards-boosters?id_manufacturer=3041&ship=1"),
             ("401Games", "pokemon", "Booster Boxes", "https://store.401games.ca/collections/pokemon-trading-cards?sort=price_max_to_min&filters=Product+Type,Product+Type_Booster+Boxes,Price_from_to,66-400,In+Stock,True"),
             ("401Games", "pokemon", "New Releases", "https://store.401games.ca/collections/pokemon-new-releases?sort=price_max_to_min&filters=In+Stock,True,Category,Pokemon+Sealed+Product"),
             ("Hobbiesville", "pokemon", "Pre-Order", "https://hobbiesville.com/collections/pokemon-pre-orders-1"),
