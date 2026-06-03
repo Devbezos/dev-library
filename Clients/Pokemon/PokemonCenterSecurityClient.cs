@@ -27,15 +27,12 @@ public sealed class PokemonCenterSecurityClient
         "queueit",
         "waiting room",
         "waitingroom",
-        "queue",
-        "incapsula",
         "_incapsula_resource",
         "imperva",
         "waiting room | pok",
         "psyduck_waitingroom",
         "cwudnsai",
         "swwrgts",
-        "akamai",
         "perimeterx",
         "px-captcha",
         "captcha",
@@ -65,16 +62,18 @@ public sealed class PokemonCenterSecurityClient
             .ToArray();
 
         var queueDetected = markers.Any(m =>
-            m.Contains("queue", StringComparison.OrdinalIgnoreCase) ||
-            m.Contains("waiting", StringComparison.OrdinalIgnoreCase));
+            m.Equals("queue-it", StringComparison.OrdinalIgnoreCase) ||
+            m.Equals("queueit", StringComparison.OrdinalIgnoreCase) ||
+            m.Contains("waiting", StringComparison.OrdinalIgnoreCase) ||
+            m.Contains("psyduck_waitingroom", StringComparison.OrdinalIgnoreCase) ||
+            m.Contains("cwudnsai", StringComparison.OrdinalIgnoreCase) ||
+            m.Contains("swwrgts", StringComparison.OrdinalIgnoreCase));
         var captchaDetected = markers.Any(m =>
             m.Contains("captcha", StringComparison.OrdinalIgnoreCase) ||
             m.Contains("capcha", StringComparison.OrdinalIgnoreCase) ||
             m.Contains("perimeter", StringComparison.OrdinalIgnoreCase) ||
-            m.Contains("incapsula", StringComparison.OrdinalIgnoreCase) ||
+            m.Contains("_incapsula_resource", StringComparison.OrdinalIgnoreCase) ||
             m.Contains("imperva", StringComparison.OrdinalIgnoreCase) ||
-            m.Contains("cwudnsai", StringComparison.OrdinalIgnoreCase) ||
-            m.Contains("swwrgts", StringComparison.OrdinalIgnoreCase) ||
             m.Contains("datadome", StringComparison.OrdinalIgnoreCase));
 
         var serverHeader = string.Join(", ", response.Headers.Server.Select(x => x.ToString()));
