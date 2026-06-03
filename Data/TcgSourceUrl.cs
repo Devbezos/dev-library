@@ -58,26 +58,35 @@ namespace dev_library.Data
             conn.Open();
 
             using var cmd = conn.CreateCommand();
+            // Create normalized store and urls tables.
             cmd.CommandText = """
-                CREATE TABLE IF NOT EXISTS tcg_source_urls (
+                CREATE TABLE IF NOT EXISTS tcg_stores (
+                    id          INT AUTO_INCREMENT PRIMARY KEY,
+                    name        VARCHAR(100) NOT NULL UNIQUE,
+                    display_name VARCHAR(200) NOT NULL,
+                    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS tcg_store_urls (
                     id         INT AUTO_INCREMENT PRIMARY KEY,
-                    store      VARCHAR(100)  NOT NULL,
+                    store_id   INT NOT NULL,
                     game       VARCHAR(50)   NOT NULL,
                     category   VARCHAR(200)  NOT NULL,
                     url        VARCHAR(2000) NOT NULL,
                     enabled    TINYINT(1)    NOT NULL DEFAULT 1,
-                    created_at DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
+                    created_at DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (store_id) REFERENCES tcg_stores(id) ON DELETE CASCADE
+                );
                 """;
             cmd.ExecuteNonQuery();
 
-            // Avoid MySQL key-length overflow: index a URL prefix instead of full VARCHAR(2000).
+            // Unique index on store_id+game+url prefix to avoid key-length issues.
             using var idxExists = conn.CreateCommand();
             idxExists.CommandText = """
                 SELECT COUNT(*)
                 FROM information_schema.statistics
                 WHERE table_schema = DATABASE()
-                  AND table_name = 'tcg_source_urls'
+                  AND table_name = 'tcg_store_urls'
                   AND index_name = 'uq_store_game_url'
                 """;
             var hasIndex = Convert.ToInt32(idxExists.ExecuteScalar()) > 0;
@@ -86,23 +95,37 @@ namespace dev_library.Data
                 using var addIndex = conn.CreateCommand();
                 addIndex.CommandText = """
                     CREATE UNIQUE INDEX uq_store_game_url
-                    ON tcg_source_urls (store, game, url(255))
+                    ON tcg_store_urls (store_id, game, url(255))
                     """;
                 addIndex.ExecuteNonQuery();
             }
 
+            // Seed stores and urls from defaults using normalized tables.
             foreach (var d in _defaults)
             {
-                using var seed = conn.CreateCommand();
-                seed.CommandText = """
-                    INSERT IGNORE INTO tcg_source_urls (store, game, category, url, enabled)
-                    VALUES (@store, @game, @category, @url, 1)
+                // Insert store if not exists.
+                using var seedStore = conn.CreateCommand();
+                seedStore.CommandText = """
+                    INSERT IGNORE INTO tcg_stores (name, display_name)
+                    VALUES (@name, @display_name)
                     """;
-                seed.Parameters.AddWithValue("@store", d.Store);
-                seed.Parameters.AddWithValue("@game", d.Game);
-                seed.Parameters.AddWithValue("@category", d.Category);
-                seed.Parameters.AddWithValue("@url", d.Url);
-                seed.ExecuteNonQuery();
+                seedStore.Parameters.AddWithValue("@name", d.Store);
+                seedStore.Parameters.AddWithValue("@display_name", d.Store);
+                seedStore.ExecuteNonQuery();
+
+                // Insert url linked to store.
+                using var seedUrl = conn.CreateCommand();
+                seedUrl.CommandText = """
+                    INSERT IGNORE INTO tcg_store_urls (store_id, game, category, url, enabled)
+                    VALUES (
+                        (SELECT id FROM tcg_stores WHERE name = @store LIMIT 1),
+                        @game, @category, @url, 1)
+                    """;
+                seedUrl.Parameters.AddWithValue("@store", d.Store);
+                seedUrl.Parameters.AddWithValue("@game", d.Game);
+                seedUrl.Parameters.AddWithValue("@category", d.Category);
+                seedUrl.Parameters.AddWithValue("@url", d.Url);
+                seedUrl.ExecuteNonQuery();
             }
         }
 
@@ -113,12 +136,13 @@ namespace dev_library.Data
 
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
-                SELECT id, store, game, category, url, enabled
-                FROM tcg_source_urls
-                WHERE (@game IS NULL OR game = @game)
-                  AND (@store IS NULL OR store = @store)
-                  AND (@enabledOnly = 0 OR enabled = 1)
-                ORDER BY store, game, category, id
+                SELECT u.id, s.name AS store, u.game, u.category, u.url, u.enabled
+                FROM tcg_store_urls u
+                JOIN tcg_stores s ON u.store_id = s.id
+                WHERE (@game IS NULL OR u.game = @game)
+                  AND (@store IS NULL OR s.name = @store)
+                  AND (@enabledOnly = 0 OR u.enabled = 1)
+                ORDER BY s.name, u.game, u.category, u.id
                 """;
             cmd.Parameters.AddWithValue("@game", (object?)game ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@store", (object?)store ?? DBNull.Value);
@@ -146,18 +170,42 @@ namespace dev_library.Data
             using var conn = new MySqlConnection(_connectionString);
             conn.Open();
 
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = """
-                INSERT INTO tcg_source_urls (store, game, category, url, enabled)
-                VALUES (@store, @game, @category, @url, @enabled)
-                """;
-            cmd.Parameters.AddWithValue("@store", sourceUrl.Store);
-            cmd.Parameters.AddWithValue("@game", sourceUrl.Game);
-            cmd.Parameters.AddWithValue("@category", sourceUrl.Category);
-            cmd.Parameters.AddWithValue("@url", sourceUrl.Url);
-            cmd.Parameters.AddWithValue("@enabled", sourceUrl.Enabled ? 1 : 0);
-            cmd.ExecuteNonQuery();
-            return (int)cmd.LastInsertedId;
+            using var tx = conn.BeginTransaction();
+            try
+            {
+                // Ensure store exists.
+                using var storeCmd = conn.CreateCommand();
+                storeCmd.Transaction = tx;
+                storeCmd.CommandText = "INSERT IGNORE INTO tcg_stores (name, display_name) VALUES (@name, @display)";
+                storeCmd.Parameters.AddWithValue("@name", sourceUrl.Store);
+                storeCmd.Parameters.AddWithValue("@display", sourceUrl.Store);
+                storeCmd.ExecuteNonQuery();
+
+                // Get store id.
+                using var sid = conn.CreateCommand();
+                sid.Transaction = tx;
+                sid.CommandText = "SELECT id FROM tcg_stores WHERE name = @name LIMIT 1";
+                sid.Parameters.AddWithValue("@name", sourceUrl.Store);
+                var storeId = Convert.ToInt32(sid.ExecuteScalar());
+
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.CommandText = "INSERT INTO tcg_store_urls (store_id, game, category, url, enabled) VALUES (@store_id, @game, @category, @url, @enabled)";
+                cmd.Parameters.AddWithValue("@store_id", storeId);
+                cmd.Parameters.AddWithValue("@game", sourceUrl.Game);
+                cmd.Parameters.AddWithValue("@category", sourceUrl.Category);
+                cmd.Parameters.AddWithValue("@url", sourceUrl.Url);
+                cmd.Parameters.AddWithValue("@enabled", sourceUrl.Enabled ? 1 : 0);
+                cmd.ExecuteNonQuery();
+                var id = (int)cmd.LastInsertedId;
+                tx.Commit();
+                return id;
+            }
+            catch
+            {
+                tx.Rollback();
+                throw;
+            }
         }
 
         public void UpdateUrl(int id, string url)
@@ -166,7 +214,7 @@ namespace dev_library.Data
             conn.Open();
 
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "UPDATE tcg_source_urls SET url = @url WHERE id = @id";
+            cmd.CommandText = "UPDATE tcg_store_urls SET url = @url WHERE id = @id";
             cmd.Parameters.AddWithValue("@url", url);
             cmd.Parameters.AddWithValue("@id", id);
             cmd.ExecuteNonQuery();
@@ -178,7 +226,7 @@ namespace dev_library.Data
             conn.Open();
 
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "UPDATE tcg_source_urls SET enabled = @enabled WHERE id = @id";
+            cmd.CommandText = "UPDATE tcg_store_urls SET enabled = @enabled WHERE id = @id";
             cmd.Parameters.AddWithValue("@enabled", enabled ? 1 : 0);
             cmd.Parameters.AddWithValue("@id", id);
             cmd.ExecuteNonQuery();
@@ -190,7 +238,7 @@ namespace dev_library.Data
             conn.Open();
 
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "DELETE FROM tcg_source_urls WHERE id = @id";
+            cmd.CommandText = "DELETE FROM tcg_store_urls WHERE id = @id";
             cmd.Parameters.AddWithValue("@id", id);
             cmd.ExecuteNonQuery();
         }
