@@ -127,10 +127,17 @@ namespace dev_library.Clients.Fitness
             var cutoff = DateTime.Today.AddDays(-1);
             var result = await FetchDataType<GoogleHealthSleepResponse>("sleep");
             if (result == null) return new List<GoogleHealthSleepDataPoint>();
+
+            // Include sleep sessions that either start within the last 24 hours
+            // or overlap the window (i.e., end after the cutoff). This ensures
+            // sleeps that begin before midnight but continue into the target
+            // day are counted for the daily snapshot.
             var filtered = result.DataPoints
-                .Where(dp =>
-                    !dp.Sleep.Metadata.Nap &&
-                    DateTime.TryParse(dp.Sleep.Interval.StartTime, out var t) && t >= cutoff)
+                .Where(dp => !dp.Sleep.Metadata.Nap &&
+                    (
+                        (DateTime.TryParse(dp.Sleep.Interval.StartTime, out var s) && s >= cutoff) ||
+                        (DateTime.TryParse(dp.Sleep.Interval.EndTime, out var e) && e >= cutoff)
+                    ))
                 .ToList();
             return filtered;
         }
@@ -261,7 +268,8 @@ namespace dev_library.Clients.Fitness
             var sleepTask      = Get24HourSleep();
             var hrTask         = GetRestingHeartRate(1);
             var nutritionTask  = GetDayNutrition(DateOnly.FromDateTime(DateTime.Today.AddDays(-1)));
-            await Task.WhenAll(exercisesTask, stepsTask, sleepTask, hrTask, nutritionTask);
+            var weightTask     = GetMostRecentWeightLbs();
+            await Task.WhenAll(exercisesTask, stepsTask, sleepTask, hrTask, nutritionTask, weightTask);
 
             var mainSleep  = sleepTask.Result.OrderByDescending(s => s.Sleep.Summary.MinutesAsleep).FirstOrDefault();
             var sleepHours = mainSleep?.Sleep.GetDurationHours() is double h && h > 0 ? h : (double?)null;
@@ -282,15 +290,54 @@ namespace dev_library.Clients.Fitness
                 })
                 .ToList();
 
-            var caloriesBurnt = exercisesTask.Result.Sum(e => e.Exercise.MetricsSummary.CaloriesKcal ?? 0);
+            var caloriesFromMetrics = exercisesTask.Result.Sum(e => e.Exercise.MetricsSummary.CaloriesKcal ?? 0);
             var caloriesEaten = nutritionTask.Result.Sum(p => p.Nutrition.Nutrients.Calories ?? 0);
+
+            double? caloriesBurnt = null;
+            if (caloriesFromMetrics > 0)
+            {
+                caloriesBurnt = caloriesFromMetrics;
+            }
+            else
+            {
+                // Estimate calories from activity durations and weight when metrics are not provided.
+                var weightLbs = weightTask.Result;
+                double? weightKg = weightLbs.HasValue ? weightLbs.Value / 2.20462 : (double?)null;
+                var totalMinutes = exercisesTask.Result.Sum(e => ParseDurationSeconds(e.Exercise.ActiveDuration) / 60);
+                if (totalMinutes > 0 && weightKg.HasValue)
+                {
+                    double EstimateCaloriesForActivity(GoogleHealthDataPoint dp)
+                    {
+                        var name = !string.IsNullOrWhiteSpace(dp.Exercise.DisplayName) ? dp.Exercise.DisplayName : dp.Exercise.ExerciseType;
+                        var mins = ParseDurationSeconds(dp.Exercise.ActiveDuration) / 60;
+                        double met = 4.0; // default moderate intensity
+                        var n = name.ToLowerInvariant();
+                        if (n.Contains("run") || n.Contains("jog")) met = 9.8;
+                        else if (n.Contains("walk")) met = 3.5;
+                        else if (n.Contains("bike") || n.Contains("cycling")) met = 7.5;
+                        else if (n.Contains("swim")) met = 8.0;
+                        else if (n.Contains("strength") || n.Contains("workout") || n.Contains("weight")) met = 6.0;
+                        // calories = mins * (MET * 3.5 * weightKg) / 200
+                        return mins * (met * 3.5 * weightKg.Value) / 200.0;
+                    }
+
+                    var estimated = exercisesTask.Result.Sum(dp => EstimateCaloriesForActivity(dp));
+                    if (estimated > 0) caloriesBurnt = estimated;
+                }
+
+                // Fallback: approximate from steps (avg ~0.04 kcal/step)
+                if (!caloriesBurnt.HasValue && stepsTask.Result > 0)
+                {
+                    caloriesBurnt = stepsTask.Result * 0.04;
+                }
+            }
 
             return new DailyFitnessSnapshot
             {
                 SleepHours    = sleepHours,
                 Steps         = stepsTask.Result,
                 RestingHrBpm  = hrBpm,
-                CaloriesBurnt = caloriesBurnt > 0 ? caloriesBurnt : null,
+                CaloriesBurnt = caloriesBurnt.HasValue && caloriesBurnt.Value > 0 ? caloriesBurnt : null,
                 CaloriesEaten = caloriesEaten > 0 ? caloriesEaten : null,
                 Activities    = activities,
             };
@@ -341,8 +388,50 @@ namespace dev_library.Clients.Fitness
                 .ToDictionary(g => g.Key, g => g.Sum(p => p.Nutrition.Nutrients.Calories ?? 0));
 
             int calorieLoggedDays = caloriesByDay.Values.Count(c => c >= 1000);
-            var totalCaloriesBurnt = exercisesTask.Result.Sum(e => e.Exercise.MetricsSummary.CaloriesKcal ?? 0);
+            var totalCaloriesFromMetrics = exercisesTask.Result.Sum(e => e.Exercise.MetricsSummary.CaloriesKcal ?? 0);
             var totalCaloriesEaten = nutritionTask.Result.Sum(p => p.Nutrition.Nutrients.Calories ?? 0);
+
+            double totalCaloriesBurnt = 0;
+            if (totalCaloriesFromMetrics > 0)
+            {
+                totalCaloriesBurnt = totalCaloriesFromMetrics;
+            }
+            else
+            {
+                // Estimate using per-exercise durations and most recent weight in the window
+                double? weightKg = null;
+                var orderedWeights = weightTask.Result.OrderBy(w => w.Weight.SampleTime.PhysicalTime).ToList();
+                if (orderedWeights.Count > 0)
+                {
+                    var last = orderedWeights[^1];
+                    if (last.Weight.WeightKg.HasValue) weightKg = last.Weight.WeightKg.Value;
+                }
+
+                if (weightKg.HasValue)
+                {
+                    double EstimateCaloriesForActivity(GoogleHealthDataPoint dp)
+                    {
+                        var name = !string.IsNullOrWhiteSpace(dp.Exercise.DisplayName) ? dp.Exercise.DisplayName : dp.Exercise.ExerciseType;
+                        var mins = ParseDurationSeconds(dp.Exercise.ActiveDuration) / 60;
+                        double met = 4.0;
+                        var n = name.ToLowerInvariant();
+                        if (n.Contains("run") || n.Contains("jog")) met = 9.8;
+                        else if (n.Contains("walk")) met = 3.5;
+                        else if (n.Contains("bike") || n.Contains("cycling")) met = 7.5;
+                        else if (n.Contains("swim")) met = 8.0;
+                        else if (n.Contains("strength") || n.Contains("workout") || n.Contains("weight")) met = 6.0;
+                        return mins * (met * 3.5 * weightKg.Value) / 200.0;
+                    }
+
+                    totalCaloriesBurnt = exercisesTask.Result.Sum(dp => EstimateCaloriesForActivity(dp));
+                }
+                else
+                {
+                    // Fallback to steps-based estimate if weight isn't available
+                    totalCaloriesBurnt = stepsTask.Result * 0.04;
+                }
+            }
+
             double? avgDailyDeficit = (totalCaloriesBurnt > 0 || totalCaloriesEaten > 0)
                 ? (totalCaloriesBurnt - totalCaloriesEaten) / 7.0
                 : null;
@@ -369,7 +458,9 @@ namespace dev_library.Clients.Fitness
             var weightTask = GetRecentWeight(7);
             var hrTask = GetRestingHeartRate(7);
             await Task.WhenAll(exercisesTask, stepsTask, sleepTask, weightTask, hrTask);
-            var weeklyEmbed = BuildWeeklyEmbed(_settings.Username, exercisesTask.Result, stepsTask.Result, sleepTask.Result, weightTask.Result, hrTask.Result, _settings.HighestWeightLbs);
+            // Use the snapshot builder so we include estimated calories/deficit
+            var snapshot = await GetWeeklySnapshot();
+            var weeklyEmbed = BuildWeeklyEmbed(_settings.Username, snapshot, stepsTask.Result, weightTask.Result, hrTask.Result, _settings.HighestWeightLbs);
             await _discordClient.PostEmbed(_settings.ChannelId, weeklyEmbed);
             _fitnessRepository?.LogPost(_settings.Username, "weekly");
             Log.Information("GoogleHealthClient.PostWeeklyFitnessStats: END");
@@ -378,14 +469,8 @@ namespace dev_library.Clients.Fitness
         public async Task PostDailyFitnessStats()
         {
             Log.Information("GoogleHealthClient.PostDailyFitnessStats: START");
-
-            var exercisesTask = Get24HourExercises();
-            var stepsTask = Get24HourStepCount();
-            var sleepTask = Get24HourSleep();
-            var hrTask = GetRestingHeartRate(1);
-            await Task.WhenAll(exercisesTask, stepsTask, sleepTask, hrTask);
-
-            var dailyEmbed = BuildDailyEmbed(_settings.Username, exercisesTask.Result, stepsTask.Result, sleepTask.Result, hrTask.Result);
+            var snapshot = await GetDailySnapshot();
+            var dailyEmbed = BuildDailyEmbed(_settings.Username, snapshot);
             await _discordClient.PostEmbed(_settings.ChannelId, dailyEmbed);
             _fitnessRepository?.LogPost(_settings.Username, "daily");
             Log.Information("GoogleHealthClient.PostDailyFitnessStats: END");
@@ -393,43 +478,94 @@ namespace dev_library.Clients.Fitness
 
         private static Embed BuildDailyEmbed(
             string username,
-            List<GoogleHealthDataPoint> exercises,
-            long steps,
-            List<GoogleHealthSleepDataPoint> sleep,
-            List<GoogleHealthRestingHrDataPoint> heartRate)
+            DailyFitnessSnapshot snapshot)
         {
             var builder = new EmbedBuilder()
                 .WithTitle($"{username} — Daily Fitness — {DateTime.Today.AddDays(-1):MMM d, yyyy}")
                 .WithColor(new Color(0x2ECC71))
                 .WithTimestamp(DateTimeOffset.UtcNow);
 
-            // Sleep: pick the session with the most sleep minutes
             string sleepStr = "N/A";
-            var mainSleep = sleep
-                .OrderByDescending(s => s.Sleep.Summary.MinutesAsleep)
-                .FirstOrDefault();
-            if (mainSleep != null)
-            {
-                var hours = mainSleep.Sleep.GetDurationHours();
-                if (hours > 0) sleepStr = $"{hours:0.0} hrs";
-            }
+            // snapshot doesn't include raw sleep list here; assume its SleepHours is representative
+            if (snapshot.SleepHours.HasValue)
+                sleepStr = $"{snapshot.SleepHours.Value:0.0} hrs";
 
-            // Steps
-            string stepsStr = steps > 0 ? $"{steps:N0}" : "N/A";
+            string stepsStr = snapshot.Steps > 0 ? $"{snapshot.Steps:N0}" : "N/A";
 
-            // Activity: grouped by category with total duration per category
-            string activityStr = FormatActivityBreakdown(exercises);
+            string activityStr = snapshot.Activities.Count > 0 ? string.Join(", ", snapshot.Activities.Select(a => a.Minutes > 0 ? $"{a.Name} ({FormatMinutes(a.Minutes)})" : a.Name)) : "N/A";
 
-            // Resting heart rate: most recent data point
-            string hrStr = "N/A";
-            var latestHr = heartRate.LastOrDefault();
-            if (latestHr != null && latestHr.DailyRestingHeartRate.BeatsPerMinute > 0)
-                hrStr = $"{latestHr.DailyRestingHeartRate.BeatsPerMinute} bpm";
+            string hrStr = snapshot.RestingHrBpm.HasValue ? $"{snapshot.RestingHrBpm.Value} bpm" : "N/A";
+
+            string caloriesBurntStr = snapshot.CaloriesBurnt.HasValue ? $"{snapshot.CaloriesBurnt.Value:0} kcal" : "N/A";
+            string caloriesEatenStr = snapshot.CaloriesEaten.HasValue ? $"{snapshot.CaloriesEaten.Value:0} kcal" : "N/A";
 
             builder.AddField("😴 Sleep", sleepStr, true);
             builder.AddField("👟 Steps", stepsStr, true);
             builder.AddField("❤️ Resting HR", hrStr, true);
+            builder.AddField("🔥 Calories Burnt", caloriesBurntStr, true);
+            builder.AddField("🍽️ Calories Eaten", caloriesEatenStr, true);
             builder.AddField("🏃 Activity", activityStr, false);
+
+            return builder.Build();
+        }
+
+        private static Embed BuildWeeklyEmbed(
+            string username,
+            WeeklyFitnessSnapshot snapshot,
+            long totalSteps,
+            List<GoogleHealthWeightDataPoint> weightPoints,
+            List<GoogleHealthRestingHrDataPoint> heartRate,
+            double? highestWeightLbs = null)
+        {
+            var start = DateTime.Now.AddDays(-7);
+            var end = DateTime.Now;
+
+            var builder = new EmbedBuilder()
+                .WithTitle($"{username} — Weekly Fitness Summary — {start:MMM d} – {end:MMM d, yyyy}")
+                .WithColor(new Color(0x00B36B))
+                .WithTimestamp(DateTimeOffset.UtcNow);
+
+            int totalActivityMinutes = snapshot.Activities.Sum(a => a.Minutes);
+
+            var avgSleepStr = snapshot.AvgSleepHours.HasValue ? $"{snapshot.AvgSleepHours:0.0} hrs/night" : "N/A";
+            var avgSteps = totalSteps / 7;
+            var avgStepsStr = avgSteps > 0 ? $"{avgSteps:N0}/day" : "N/A";
+
+            string weekActivityStr = snapshot.Activities.Count > 0 ? $"{FormatMinutes(totalActivityMinutes)} — {string.Join(", ", snapshot.Activities.Select(a => a.Minutes > 0 ? $"{a.Name} ({FormatMinutes(a.Minutes)})" : a.Name))}" : "N/A";
+
+            // Weight: replicate previous behavior
+            string weightStr = "N/A";
+            var ordered = weightPoints.OrderBy(w => w.Weight.SampleTime.PhysicalTime).ToList();
+            if (ordered.Count >= 2)
+            {
+                var first = ordered[0].Weight.WeightKg.HasValue ? (double?)(ordered[0].Weight.WeightKg!.Value * 2.20462) : null;
+                var last  = ordered[^1].Weight.WeightKg.HasValue ? (double?)(ordered[^1].Weight.WeightKg!.Value * 2.20462) : null;
+                if (first.HasValue && last.HasValue)
+                {
+                    var delta = last.Value - first.Value;
+                    weightStr = $"{(delta >= 0 ? "+" : "")}{delta:0.0} lbs";
+                    if (highestWeightLbs.HasValue && last.Value > 0)
+                    {
+                        var lifetimeLoss = highestWeightLbs.Value - last.Value;
+                        if (lifetimeLoss > 0)
+                            weightStr += $" ({lifetimeLoss:0.0} lbs lost total)";
+                    }
+                }
+            }
+
+            string hrStr = snapshot.AvgRestingHrBpm.HasValue ? $"{snapshot.AvgRestingHrBpm:0} bpm avg" : "N/A";
+
+
+            string avgDeficitStr = snapshot.AvgDailyCalorieDeficit.HasValue ? $"{snapshot.AvgDailyCalorieDeficit.Value:0} kcal/day" : "N/A";
+            string calorieLoggedStr = snapshot.CalorieLoggedDays > 0 ? snapshot.CalorieLoggedDays.ToString() : "0";
+
+            builder.AddField("😴 Avg Sleep", avgSleepStr, true);
+            builder.AddField("👟 Avg Steps", avgStepsStr, true);
+            builder.AddField("❤️ Resting HR", hrStr, true);
+            builder.AddField("⚖️ Weight", weightStr, true);
+            builder.AddField("🔥 Avg Daily Deficit", avgDeficitStr, true);
+            builder.AddField("📅 Calorie Logged Days", calorieLoggedStr, true);
+            builder.AddField("🏃 Activity", weekActivityStr, false);
 
             return builder.Build();
         }
