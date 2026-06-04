@@ -1,4 +1,3 @@
-using MySqlConnector;
 using System.Collections.Generic;
 
 namespace DevClient.Data

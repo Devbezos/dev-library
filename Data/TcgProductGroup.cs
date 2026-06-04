@@ -1,4 +1,3 @@
-using MySqlConnector;
 using System.Text.RegularExpressions;
 
 namespace DevClient.Data

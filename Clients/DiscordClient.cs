@@ -365,7 +365,7 @@ namespace DevClient.Clients
 
         private static string NormalizeFuzzyProductName(string name)
         {
-            var normalized = TcgProductGroupRepository.NormalizeGroupKey(name);
+            var normalized = TcgPreorderClassifier.NormalizeGroupKey(name);
             return string.IsNullOrWhiteSpace(normalized) ? name.Trim().ToLowerInvariant() : normalized;
         }
 

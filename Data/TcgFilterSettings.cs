@@ -1,4 +1,3 @@
-using MySqlConnector;
 
 namespace DevClient.Data
 {

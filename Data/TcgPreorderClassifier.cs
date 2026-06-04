@@ -7,6 +7,7 @@ public static class TcgPreorderClassifier
     private static readonly Regex PreorderRegex = new(
         @"\bpre[\s\-_/\.]*orders?\b|\bpreorders?\b|\bpre[\s\-_/\.]*sales?\b|\bpresales?\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex Spaces = new(@"\s+", RegexOptions.Compiled);
 
     public static bool IsPreorder(Product product) => IsPreorder(product.Name);
 
@@ -58,6 +59,15 @@ public static class TcgPreorderClassifier
             .OrderBy(s => s.Store)
             .ThenBy(s => s.Keyword)
             .ToList();
+    }
+
+    public static string NormalizeGroupKey(string value)
+    {
+        var lower = value.ToLowerInvariant();
+        lower = Regex.Replace(lower, @"\([^)]*\)", " ");
+        lower = Regex.Replace(lower, @"\b(pre[- ]?order|new|sealed|product|pokemon|tcg|english|display|mega|evolution)\b", " ");
+        lower = Regex.Replace(lower, @"[^a-z0-9]+", " ");
+        return Spaces.Replace(lower, " ").Trim();
     }
 
     public static List<Search> FromTcgResults(IEnumerable<TcgResult> results)
