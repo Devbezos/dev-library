@@ -1,0 +1,483 @@
+using DevClient.Clients;
+using DevClient.Data;
+using DevClient.Data.Discord;
+using Discord;
+using FuzzySharp;
+using Serilog;
+using System.Collections.Concurrent;
+using System.Text;
+using System.Text.RegularExpressions;
+
+namespace DevClient.Clients
+{
+    public class DiscordClient : IDiscordClient
+    {
+        private static readonly ILogger Logger = Log.ForContext<DiscordClient>();
+
+        public const string TcgMessageHeader = "TCG Stock Monitor";
+        private const int TcgFuzzyGroupScoreThreshold = 90;
+        public static Func<ulong, string, Task>? SendMessageAsync { get; set; }
+        public static Func<ulong, string, Task<ulong>>? SendMessageWithIdAsync { get; set; }
+        public static Func<ulong, ulong, string, Task>? EditMessageAsync { get; set; }
+        public static Func<ulong, ulong, Embed, Task>? EditEmbedMessageAsync { get; set; }
+        public static Func<ulong, Task<ulong?>>? GetLatestBotMessageIdAsync { get; set; }
+        public static Func<ulong, Task<ulong[]>>? GetTrackedTcgMessageIdsAsync { get; set; }
+        public static Func<ulong, ulong[], Task>? SaveTrackedTcgMessageIdsAsync { get; set; }
+        public static Func<ulong, Embed, Task>? SendEmbedAsync { get; set; }
+        public static Func<ulong, string, Task>? SendDirectMessageToUserAsync { get; set; }
+        public static Func<ulong, string, Task<ulong>>? CreateApplicationChannelAsync { get; set; }
+        public static Func<ulong, Embed, Task<ulong>>? SendEmbedWithIdAsync { get; set; }
+        public static Func<ulong, ulong, Task>? PinMessageAsync { get; set; }
+        private static readonly ConcurrentDictionary<ulong, ulong[]> _tcgMessageIdsByChannel = new();
+
+        public async Task PostToChannel(ulong channelId, string message)
+        {
+            Logger.Information("PostToChannel: START");
+
+            if (SendMessageAsync != null)
+                await SendMessageAsync(channelId, message);
+            else
+                Logger.Warning("PostToChannel: SendMessageAsync not wired up. Message: {Message}", message);
+
+            Logger.Information("PostToChannel: END");
+        }
+
+        public async Task PostEmbed(ulong channelId, Embed embed)
+        {
+            Logger.Information("PostEmbed: START");
+
+            if (SendEmbedAsync != null)
+                await SendEmbedAsync(channelId, embed);
+            else
+                Logger.Warning("PostEmbed: SendEmbedAsync not wired up. Title: {Title}", embed.Title);
+
+            Logger.Information("PostEmbed: END");
+        }
+
+        public async Task<(ulong channelId, string channelName, ulong[] messageIds)> PostApplication(ulong channelId, ulong officerChannelId, GuildApplication app)
+        {
+            Logger.Information("PostApplication: START");
+
+            if (CreateApplicationChannelAsync == null || SendEmbedWithIdAsync == null)
+            {
+                Logger.Warning("PostApplication: delegates not wired up");
+                return (0, string.Empty, Array.Empty<ulong>());
+            }
+
+            var channelName = SanitizeChannelName(app.ContactInfo);
+            var threadId = await CreateApplicationChannelAsync(channelId, channelName);
+            var msgId = await SendEmbedWithIdAsync(threadId, app.ToEmbed());
+            if (msgId != 0 && PinMessageAsync != null)
+                await PinMessageAsync(threadId, msgId);
+
+            var officerMessage = app.ToOfficerMessage();
+            if (officerMessage != null)
+                await PostToChannel(officerChannelId, officerMessage);
+
+            Logger.Information("PostApplication: END");
+            return (threadId, channelName, new[] { msgId });
+        }
+
+        private static string SanitizeChannelName(string contactInfo)
+        {
+            // Find last hyphen, take one word to the left and everything to the right
+            var lastHyphen = contactInfo.LastIndexOf('-');
+            string name;
+            if (lastHyphen > 0)
+            {
+                var beforeHyphen = contactInfo[..lastHyphen].TrimEnd();
+                var lastSpace = beforeHyphen.LastIndexOf(' ');
+                var wordBefore = lastSpace >= 0 ? beforeHyphen[(lastSpace + 1)..] : beforeHyphen;
+                var afterHyphen = contactInfo[(lastHyphen + 1)..].Trim();
+                name = $"{wordBefore}-{afterHyphen}";
+            }
+            else
+            {
+                name = contactInfo.Trim();
+            }
+            name = Regex.Replace(name.ToLower(), @"[^a-z0-9\-]", "");
+            if (name.Length > 100) name = name[..100];
+            return string.IsNullOrEmpty(name) ? "application" : name;
+        }
+
+        private static List<string> SplitMessage(string message, int maxLength)
+        {
+            var chunks = new List<string>();
+            var lines = message.Split('\n');
+            var current = new System.Text.StringBuilder();
+
+            foreach (var line in lines)
+            {
+                if (current.Length + line.Length + 1 > maxLength)
+                {
+                    chunks.Add(current.ToString().TrimEnd());
+                    current.Clear();
+                }
+                current.AppendLine(line);
+            }
+
+            if (current.Length > 0)
+                chunks.Add(current.ToString().TrimEnd());
+
+            return chunks;
+        }
+
+        public async Task<List<TrackedApplication>> CheckNewApplications(GoogleSheetsClient sheetsClient)
+        {
+            Logger.Debug("CheckNewApplications: START");
+            var result = new List<TrackedApplication>();
+            var guildsWithApps = AppSettings.Guilds.Where(g =>
+                g.ApplicationSheet != null &&
+                g.Channels?.ContainsKey("applicationsCategory") == true &&
+                g.Channels?.ContainsKey("applicationsOfficer") == true);
+
+            foreach (var guild in guildsWithApps)
+            {
+                var categoryId = guild.Channels["applicationsCategory"];
+                var officerChannelId = guild.Channels["applicationsOfficer"];
+                var archiveCategoryId = guild.Channels.GetValueOrDefault("applicationsArchiveCategory");
+                var applications = await sheetsClient.ReadApplications(guild.ApplicationSheet!);
+                var unposted = applications.Where(a => !a.IsPosted).ToList();
+
+                if (unposted.Count == 0) continue;
+
+                foreach (var app in unposted)
+                {
+                    Logger.Information("CheckNewApplications: Posting application row {Row} from {Contact}", app.RowIndex, app.ContactInfo);
+                    var (channelId, channelName, messageIds) = await PostApplication(categoryId, officerChannelId, app);
+                    foreach (var msgId in messageIds.Where(id => id != 0))
+                        result.Add(new TrackedApplication(msgId, channelId, archiveCategoryId, guild.DenyUserIds, guild.Name, channelName));
+                    await sheetsClient.MarkApplicationAsPosted(guild.ApplicationSheet!, app.RowIndex);
+                }
+            }
+
+            Logger.Debug("CheckNewApplications: END");
+            return result;
+        }
+
+        public async Task SendDroptimizerReminders(DateTime now)
+        {
+            Logger.Debug("SendDroptimizerReminders: START");
+            foreach (var guild in AppSettings.Guilds.Where(g => g.Features.DroptimizerReminder && Helpers.IsGuildActive(g, now)))
+            {
+                var roles = guild.RolesToPing?.Length > 0
+                    ? string.Join(" ", guild.RolesToPing.Select(r => $"<@&{r}>")) + " "
+                    : "";
+                var channelId = guild.Channels?.GetValueOrDefault("droptimizer") ?? 0;
+                if (channelId != 0)
+                    await PostToChannel(channelId, $"{roles}Make sure to post droptimizers or you're not getting loot");
+            }
+            Logger.Debug("SendDroptimizerReminders: END");
+        }
+
+        public async Task PostWebHook(ulong channelId, List<Search> searchResults)
+        {
+            Logger.Information("PostWebHook: START");
+            var embeds = BuildTcgEmbeds(searchResults);
+
+            try
+            {
+                if (!_tcgMessageIdsByChannel.TryGetValue(channelId, out var messageIds) && GetTrackedTcgMessageIdsAsync != null)
+                {
+                    var persisted = await GetTrackedTcgMessageIdsAsync(channelId);
+                    if (persisted.Length > 0)
+                    {
+                        messageIds = persisted;
+                        _tcgMessageIdsByChannel[channelId] = messageIds;
+                    }
+                }
+
+                if ((messageIds == null || messageIds.Length == 0) && GetLatestBotMessageIdAsync != null)
+                {
+                    var existing = await GetLatestBotMessageIdAsync(channelId);
+                    if (existing.HasValue && existing.Value != 0)
+                    {
+                        messageIds = [existing.Value];
+                        _tcgMessageIdsByChannel[channelId] = messageIds;
+                    }
+                }
+
+                messageIds ??= [];
+                var updatedIds = messageIds.ToList();
+
+                for (var i = 0; i < embeds.Count; i++)
+                {
+                    var embed = embeds[i];
+
+                    if (i < updatedIds.Count && updatedIds[i] != 0 && EditEmbedMessageAsync != null)
+                    {
+                        try
+                        {
+                            await EditEmbedMessageAsync(channelId, updatedIds[i], embed);
+                            continue;
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Warning(ex, "PostWebHook: edit failed for message {MessageId}, creating a new embed", updatedIds[i]);
+                            if (SendEmbedWithIdAsync != null)
+                            {
+                                var replacementId = await SendEmbedWithIdAsync(channelId, embed);
+                                if (replacementId != 0)
+                                {
+                                    updatedIds[i] = replacementId;
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+
+                    if (SendEmbedWithIdAsync != null)
+                    {
+                        var createdId = await SendEmbedWithIdAsync(channelId, embed);
+                        if (createdId != 0)
+                        {
+                            if (i < updatedIds.Count) updatedIds[i] = createdId;
+                            else updatedIds.Add(createdId);
+                            continue;
+                        }
+                    }
+
+                    if (SendEmbedAsync != null)
+                    {
+                        await SendEmbedAsync(channelId, embed);
+                    }
+                    else
+                    {
+                        Logger.Warning("PostWebHook: no embed send/edit delegates are wired up");
+                    }
+                }
+
+                // If we previously needed more pages, replace leftover pages with a notice instead of leaving stale data.
+                if (EditEmbedMessageAsync != null && updatedIds.Count > embeds.Count)
+                {
+                    for (var i = embeds.Count; i < updatedIds.Count; i++)
+                    {
+                        if (updatedIds[i] == 0) continue;
+                        var stale = BuildEmptyContinuationEmbed(i + 1, updatedIds.Count);
+                        await EditEmbedMessageAsync(channelId, updatedIds[i], stale);
+                    }
+                }
+
+                var finalIds = updatedIds.Where(id => id != 0).ToArray();
+                _tcgMessageIdsByChannel[channelId] = finalIds;
+                if (SaveTrackedTcgMessageIdsAsync != null)
+                    await SaveTrackedTcgMessageIdsAsync(channelId, finalIds);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "PostWebHook: Failed to send or edit message");
+                throw;
+            }
+
+            Logger.Information("PostWebHook: END");
+        }
+
+        public async Task SendDirectMessage(ulong userId, string message)
+        {
+            Logger.Information("SendDirectMessage: START for user {UserId}", userId);
+
+            if (SendDirectMessageToUserAsync != null)
+            {
+                await SendDirectMessageToUserAsync(userId, message);
+            }
+            else
+            {
+                Logger.Warning("SendDirectMessage: SendDirectMessageToUserAsync not wired up. UserId: {UserId}", userId);
+            }
+
+            Logger.Information("SendDirectMessage: END for user {UserId}", userId);
+        }
+
+        private static List<Embed> BuildTcgEmbeds(List<Search> searchResults)
+        {
+            var itemBlocks = new List<List<string>>();
+            var itemGroups = BuildFuzzyItemGroups(searchResults);
+
+            foreach (var itemGroup in itemGroups)
+            {
+                var block = new List<string> { $"- {PickDisplayName(itemGroup.Select(x => x.Product.Name))}" };
+
+                var storeListings = itemGroup
+                    .GroupBy(x => new { x.Store, x.Product.Price, x.Product.Url })
+                    .Select(g => g.First())
+                    .OrderBy(x => x.Store)
+                    .ThenBy(x => x.Product.Price)
+                    .ToList();
+
+                foreach (var listing in storeListings)
+                {
+                    block.Add($"  - {listing.Store}: {listing.Product.Url.TrimEnd()}");
+                }
+
+                itemBlocks.Add(block);
+            }
+
+            var descriptions = BuildEmbedDescriptions(itemBlocks);
+            var total = descriptions.Count;
+
+            var embeds = new List<Embed>(total);
+            for (var i = 0; i < total; i++)
+            {
+                var title = total == 1 ? TcgMessageHeader : $"{TcgMessageHeader} ({i + 1}/{total})";
+                embeds.Add(new EmbedBuilder()
+                    .WithTitle(title)
+                    .WithDescription(descriptions[i])
+                    .WithFooter($"Updated: {GetEasternNow():yyyy-MM-dd HH:mm:ss} ET")
+                    .WithColor(Color.Blue)
+                    .Build());
+            }
+
+            return embeds;
+        }
+
+        private static List<List<Listing>> BuildFuzzyItemGroups(List<Search> searchResults)
+        {
+            var groups = new List<List<Listing>>();
+            var listings = searchResults
+                .SelectMany(s => s.Products.Select(p => new Listing(s.Store, p, NormalizeFuzzyProductName(p.Name))))
+                .OrderBy(x => x.Product.Name)
+                .ThenBy(x => x.Store)
+                .ToList();
+
+            foreach (var listing in listings)
+            {
+                var bestGroup = groups
+                    .Select(g => new
+                    {
+                        Group = g,
+                        Score = g.Max(existing => GetFuzzyGroupScore(listing.NormalizedName, existing.NormalizedName))
+                    })
+                    .Where(x => x.Score >= TcgFuzzyGroupScoreThreshold)
+                    .OrderByDescending(x => x.Score)
+                    .ThenBy(x => PickDisplayName(x.Group.Select(g => g.Product.Name)))
+                    .FirstOrDefault();
+
+                if (bestGroup == null)
+                    groups.Add([listing]);
+                else
+                    bestGroup.Group.Add(listing);
+            }
+
+            return groups
+                .OrderBy(g => PickDisplayName(g.Select(x => x.Product.Name)))
+                .ToList();
+        }
+
+        private static string NormalizeFuzzyProductName(string name)
+        {
+            var normalized = TcgProductGroupRepository.NormalizeGroupKey(name);
+            return string.IsNullOrWhiteSpace(normalized) ? name.Trim().ToLowerInvariant() : normalized;
+        }
+
+        private static int GetFuzzyGroupScore(string left, string right)
+        {
+            var sharedTokenScore = Fuzz.TokenSetRatio(left, right);
+            var fullNameScore = Fuzz.TokenSortRatio(left, right);
+            return Math.Min(sharedTokenScore, fullNameScore);
+        }
+
+        private sealed record Listing(string Store, Product Product, string NormalizedName);
+
+        private static string PickDisplayName(IEnumerable<string> names) =>
+            names.Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(n => n.Length)
+                .ThenBy(n => n)
+                .First();
+
+        private static List<string> BuildEmbedDescriptions(List<List<string>> itemBlocks)
+        {
+            const int max = 3900;
+
+            if (itemBlocks.Count == 0)
+                return ["No products found."];
+
+            var chunks = new List<string>();
+            var current = new StringBuilder();
+
+            void FlushCurrent()
+            {
+                if (current.Length == 0) return;
+                chunks.Add(current.ToString().TrimEnd());
+                current.Clear();
+            }
+
+            foreach (var block in itemBlocks)
+            {
+                var blockText = string.Join("\n", block) + "\n";
+                if (blockText.Length <= max)
+                {
+                    if (current.Length + blockText.Length > max)
+                        FlushCurrent();
+                    current.Append(blockText);
+                    continue;
+                }
+
+                // Rare case: one item block alone exceeds max. Split by lines and repeat item header as needed.
+                var itemHeader = block.First();
+                var lines = block.Skip(1).ToList();
+                var local = new StringBuilder();
+                local.AppendLine(itemHeader);
+
+                foreach (var line in lines)
+                {
+                    var safeLine = line.Length > (max - 16) ? line[..(max - 16)] + " ..." : line;
+                    if (local.Length + safeLine.Length + 1 > max)
+                    {
+                        if (current.Length + local.Length > max)
+                            FlushCurrent();
+                        current.Append(local.ToString());
+                        if (current.Length >= max)
+                            FlushCurrent();
+
+                        local.Clear();
+                        local.AppendLine(itemHeader + " (cont.)");
+                    }
+
+                    local.AppendLine(safeLine);
+                }
+
+                if (local.Length > 0)
+                {
+                    if (current.Length + local.Length > max)
+                        FlushCurrent();
+                    current.Append(local.ToString());
+                }
+            }
+
+            FlushCurrent();
+            return chunks.Count == 0 ? ["No products found."] : chunks;
+        }
+
+        private static Embed BuildEmptyContinuationEmbed(int page, int totalPages)
+        {
+            var title = totalPages <= 1 ? TcgMessageHeader : $"{TcgMessageHeader} ({page}/{totalPages})";
+            return new EmbedBuilder()
+                .WithTitle(title)
+                .WithDescription("No additional pages for this update.")
+                .WithFooter($"Updated: {GetEasternNow():yyyy-MM-dd HH:mm:ss} ET")
+                .WithColor(Color.Blue)
+                .Build();
+        }
+
+        private static DateTime GetEasternNow()
+        {
+            var utcNow = DateTime.UtcNow;
+            foreach (var timeZoneId in new[] { "Eastern Standard Time", "America/Toronto", "America/New_York" })
+            {
+                try
+                {
+                    return TimeZoneInfo.ConvertTimeFromUtc(utcNow, TimeZoneInfo.FindSystemTimeZoneById(timeZoneId));
+                }
+                catch (TimeZoneNotFoundException) { }
+                catch (InvalidTimeZoneException) { }
+            }
+
+            return utcNow.ToLocalTime();
+        }
+    }
+}
+
+
+
+
+
