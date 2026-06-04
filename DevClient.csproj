@@ -8,6 +8,21 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="**\bin\**" />
+    <Compile Remove="**\obj\**" />
+    <Compile Remove="dev-client\**" />
+    <Compile Remove="dev-library-tests\**" />
+    <EmbeddedResource Remove="**\bin\**" />
+    <EmbeddedResource Remove="**\obj\**" />
+    <EmbeddedResource Remove="dev-client\**" />
+    <EmbeddedResource Remove="dev-library-tests\**" />
+    <None Remove="**\bin\**" />
+    <None Remove="**\obj\**" />
+    <None Remove="dev-client\**" />
+    <None Remove="dev-library-tests\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Discord.Net" Version="3.17.1" />
     <PackageReference Include="FuzzySharp" Version="2.0.2" />
     <PackageReference Include="Google.Apis.Sheets.v4" Version="1.69.0.3694" />
