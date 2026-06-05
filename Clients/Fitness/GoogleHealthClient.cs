@@ -7,6 +7,7 @@ using Newtonsoft.Json.Linq;
 using Serilog;
 using System.Globalization;
 using System.Net.Http.Headers;
+using System.Text;
 using ICustomDiscordClient = DevClient.Clients.IDiscordClient;
 
 namespace DevClient.Clients.Fitness
@@ -87,11 +88,41 @@ namespace DevClient.Clients.Fitness
             return json;
         }
 
+        private async Task<string?> PostRaw(string path, object body)
+        {
+            var token = await GetAccessToken();
+
+            using var client = new HttpClient();
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+            var url = $"{Constants.GoogleHealth.BaseUrl}/{path.TrimStart('/')}";
+            var content = new StringContent(JsonConvert.SerializeObject(body), Encoding.UTF8, "application/json");
+            var response = await client.PostAsync(url, content);
+            var json = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                Log.Warning("GoogleHealthClient post {Path} failed: {Json}", path, json);
+                return null;
+            }
+
+            return json;
+        }
+
         private async Task<T?> FetchDataType<T>(string dataType, string? filter = null, string? pageToken = null) where T : class
         {
             var json = await FetchRaw(dataType, filter, pageToken);
             if (json == null) return null;
             Log.Debug("GoogleHealthClient [{DataType}] raw response: {Json}", dataType, json);
+            return JsonConvert.DeserializeObject<T>(json);
+        }
+
+        private async Task<T?> PostDataType<T>(string path, object body) where T : class
+        {
+            var json = await PostRaw(path, body);
+            if (json == null) return null;
+            Log.Debug("GoogleHealthClient [{Path}] raw response: {Json}", path, json);
             return JsonConvert.DeserializeObject<T>(json);
         }
 
@@ -193,8 +224,22 @@ namespace DevClient.Clients.Fitness
 
         public async Task<long> Get24HourStepCount()
         {
-            var since = DateTime.Today.AddDays(-1).ToString("yyyy-MM-ddTHH:mm:ss");
-            return await FetchAllSteps($"steps.interval.civil_start_time >= \"{since}\"");
+            var start = DateOnly.FromDateTime(DateTime.Today.AddDays(-1));
+            var end = DateOnly.FromDateTime(DateTime.Today);
+            return await GetStepCountRollup(start, end);
+        }
+
+        public Task<long> GetDayStepCount(DateOnly date) =>
+            GetStepCountRollup(date, date.AddDays(1));
+
+        private async Task<long> GetStepCountRollup(DateOnly startDate, DateOnly exclusiveEndDate)
+        {
+            var response = await PostDataType<GoogleHealthDailyRollupResponse>(
+                "users/me/dataTypes/steps/dataPoints:dailyRollUp",
+                BuildDailyRollupRequest(startDate, exclusiveEndDate));
+
+            return response?.RollupDataPoints
+                .Sum(p => p.Steps?.CountSum ?? 0) ?? 0;
         }
 
         public async Task<List<GoogleHealthSleepDataPoint>> Get24HourSleep()
@@ -225,8 +270,9 @@ namespace DevClient.Clients.Fitness
 
         public async Task<long> Get7DayStepCount()
         {
-            var sevenDaysAgo = DateTime.Now.AddDays(-7).Date.ToString("yyyy-MM-ddTHH:mm:ss");
-            return await FetchAllSteps($"steps.interval.civil_start_time >= \"{sevenDaysAgo}\"");
+            var start = DateOnly.FromDateTime(DateTime.Now.AddDays(-7).Date);
+            var end = DateOnly.FromDateTime(DateTime.Today.AddDays(1));
+            return await GetStepCountRollup(start, end);
         }
 
         public async Task<List<GoogleHealthSleepDataPoint>> Get7DaySleep()
@@ -281,8 +327,9 @@ namespace DevClient.Clients.Fitness
 
         public async Task<long> GetWeekSoFarStepCount()
         {
-            var since = GetStartOfWeek().ToString("yyyy-MM-ddTHH:mm:ss");
-            return await FetchAllSteps($"steps.interval.civil_start_time >= \"{since}\"");
+            var start = DateOnly.FromDateTime(GetStartOfWeek());
+            var end = DateOnly.FromDateTime(DateTime.Today.AddDays(1));
+            return await GetStepCountRollup(start, end);
         }
 
         public async Task<List<GoogleHealthSleepDataPoint>> GetWeekSoFarSleep()
@@ -324,6 +371,18 @@ namespace DevClient.Clients.Fitness
         public Task<List<GoogleHealthNutritionDataPoint>> GetTodayNutrition() =>
             GetDayNutrition(DateOnly.FromDateTime(DateTime.Today));
 
+        public async Task<double?> GetDayTotalCaloriesBurned(DateOnly date)
+        {
+            var response = await PostDataType<GoogleHealthDailyRollupResponse>(
+                "users/me/dataTypes/total-calories/dataPoints:dailyRollUp",
+                BuildDailyRollupRequest(date, date.AddDays(1)));
+
+            var calories = response?.RollupDataPoints
+                .Sum(p => p.TotalCalories?.KcalSum ?? 0) ?? 0;
+
+            return calories > 0 ? calories : null;
+        }
+
         public async Task<double?> GetMostRecentWeightLbs()
         {
             var weights = await GetRecentWeight(90);
@@ -334,13 +393,15 @@ namespace DevClient.Clients.Fitness
 
         public async Task<DailyFitnessSnapshot> GetDailySnapshot()
         {
-            var exercisesTask  = GetDayExercises(DateOnly.FromDateTime(DateTime.Today.AddDays(-1)));
-            var stepsTask      = Get24HourStepCount();
+            var snapshotDate   = DateOnly.FromDateTime(DateTime.Today.AddDays(-1));
+            var exercisesTask  = GetDayExercises(snapshotDate);
+            var stepsTask      = GetDayStepCount(snapshotDate);
             var sleepTask      = Get24HourSleep();
             var hrTask         = GetRestingHeartRate(1);
-            var nutritionTask  = GetDayNutrition(DateOnly.FromDateTime(DateTime.Today.AddDays(-1)));
+            var nutritionTask  = GetDayNutrition(snapshotDate);
             var weightTask     = GetMostRecentWeightLbs();
-            await Task.WhenAll(exercisesTask, stepsTask, sleepTask, hrTask, nutritionTask, weightTask);
+            var totalCaloriesTask = GetDayTotalCaloriesBurned(snapshotDate);
+            await Task.WhenAll(exercisesTask, stepsTask, sleepTask, hrTask, nutritionTask, weightTask, totalCaloriesTask);
 
             var mainSleep  = sleepTask.Result.OrderByDescending(s => s.Sleep.Summary.MinutesAsleep).FirstOrDefault();
             var sleepHours = mainSleep?.Sleep.GetDurationHours() is double h && h > 0 ? h : (double?)null;
@@ -365,7 +426,11 @@ namespace DevClient.Clients.Fitness
             var caloriesEaten = nutritionTask.Result.Sum(p => p.Nutrition.Nutrients.Calories ?? 0);
 
             double? caloriesBurnt = null;
-            if (caloriesFromMetrics > 0)
+            if (totalCaloriesTask.Result.HasValue)
+            {
+                caloriesBurnt = totalCaloriesTask.Result;
+            }
+            else if (caloriesFromMetrics > 0)
             {
                 caloriesBurnt = caloriesFromMetrics;
             }
@@ -754,6 +819,26 @@ namespace DevClient.Clients.Fitness
                 ? (int)Math.Round(fractionalSecs)
                 : 0;
         }
+
+        private static object BuildDailyRollupRequest(DateOnly startDate, DateOnly exclusiveEndDate) => new
+        {
+            range = new
+            {
+                start = CivilDateTime(startDate),
+                end = CivilDateTime(exclusiveEndDate)
+            },
+            windowSizeDays = 1
+        };
+
+        private static object CivilDateTime(DateOnly date) => new
+        {
+            date = new
+            {
+                year = date.Year,
+                month = date.Month,
+                day = date.Day
+            }
+        };
     }
 }
 

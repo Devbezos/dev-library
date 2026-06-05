@@ -140,6 +140,38 @@ namespace DevClient.Data.Fitness
         public long GetCount() => long.TryParse(CountRaw, out var v) ? v : 0;
     }
 
+    public class GoogleHealthDailyRollupResponse
+    {
+        [JsonProperty("rollupDataPoints")]
+        public List<GoogleHealthDailyRollupDataPoint> RollupDataPoints { get; set; } = new();
+
+        [JsonProperty("nextPageToken")]
+        public string? NextPageToken { get; set; }
+    }
+
+    public class GoogleHealthDailyRollupDataPoint
+    {
+        [JsonProperty("steps")]
+        public GoogleHealthStepsRollupValue? Steps { get; set; }
+
+        [JsonProperty("totalCalories")]
+        public GoogleHealthTotalCaloriesRollupValue? TotalCalories { get; set; }
+    }
+
+    public class GoogleHealthStepsRollupValue
+    {
+        [JsonProperty("countSum")]
+        public string CountSumRaw { get; set; } = "0";
+
+        public long CountSum => long.TryParse(CountSumRaw, out var v) ? v : 0;
+    }
+
+    public class GoogleHealthTotalCaloriesRollupValue
+    {
+        [JsonProperty("kcalSum")]
+        public double KcalSum { get; set; }
+    }
+
     public class GoogleHealthSleepResponse
     {
         [JsonProperty("dataPoints")]
