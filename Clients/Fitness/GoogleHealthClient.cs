@@ -3,7 +3,9 @@ using DevClient.Data.Fitness;
 using DevClient.Clients;
 using Discord;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Serilog;
+using System.Globalization;
 using System.Net.Http.Headers;
 using ICustomDiscordClient = DevClient.Clients.IDiscordClient;
 
@@ -108,10 +110,70 @@ namespace DevClient.Clients.Fitness
             return exercises;
         }
 
+        private async Task<List<GoogleHealthDataPoint>> FetchExercisesForWindow(DateTime start, DateTime end)
+        {
+            var startText = start.ToString("yyyy-MM-ddTHH:mm:ss");
+            var endText = end.ToString("yyyy-MM-ddTHH:mm:ss");
+            var byCivilStart = await FetchAllExercises(
+                $"exercise.interval.civil_start_time >= \"{startText}\" AND exercise.interval.civil_start_time < \"{endText}\"");
+            var byEndTime = await FetchAllExercises(
+                $"exercise.interval.end_time >= \"{startText}\" AND exercise.interval.end_time < \"{endText}\"");
+
+            return byCivilStart
+                .Concat(byEndTime)
+                .GroupBy(GetExerciseKey)
+                .Select(g => g.First())
+                .ToList();
+        }
+
+        private static string GetExerciseKey(GoogleHealthDataPoint point)
+        {
+            if (!string.IsNullOrWhiteSpace(point.Name)) return point.Name;
+            return string.Join("|",
+                point.Exercise.Interval.StartTime,
+                point.Exercise.Interval.EndTime,
+                point.Exercise.ExerciseType,
+                point.Exercise.DisplayName,
+                point.Exercise.ActiveDuration);
+        }
+
         public async Task<List<GoogleHealthDataPoint>> Get24HourExercises()
         {
             var since = DateTime.Today.AddDays(-1).ToString("yyyy-MM-ddTHH:mm:ss");
             return await FetchAllExercises($"exercise.interval.civil_start_time >= \"{since}\"");
+        }
+
+        public Task<List<GoogleHealthDataPoint>> GetDayExercises(DateOnly date)
+        {
+            var start = date.ToDateTime(TimeOnly.MinValue);
+            return FetchExercisesForWindow(start, start.AddDays(1));
+        }
+
+        public async Task<string> GetDayExercisesRaw(DateOnly date)
+        {
+            var start = date.ToDateTime(TimeOnly.MinValue);
+            var end = start.AddDays(1);
+            var startText = start.ToString("yyyy-MM-ddTHH:mm:ss");
+            var endText = end.ToString("yyyy-MM-ddTHH:mm:ss");
+            var civilStartFilter = $"exercise.interval.civil_start_time >= \"{startText}\" AND exercise.interval.civil_start_time < \"{endText}\"";
+            var endTimeFilter = $"exercise.interval.end_time >= \"{startText}\" AND exercise.interval.end_time < \"{endText}\"";
+
+            var raw = new JObject
+            {
+                ["date"] = date.ToString("yyyy-MM-dd"),
+                ["civilStartFilter"] = civilStartFilter,
+                ["civilStartResponse"] = ParseRawJson(await FetchRaw("exercise", civilStartFilter)),
+                ["endTimeFilter"] = endTimeFilter,
+                ["endTimeResponse"] = ParseRawJson(await FetchRaw("exercise", endTimeFilter)),
+            };
+            return raw.ToString(Formatting.Indented);
+        }
+
+        private static JToken ParseRawJson(string? json)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return JValue.CreateNull();
+            try { return JToken.Parse(json); }
+            catch { return JValue.CreateString(json); }
         }
 
         private async Task<long> FetchAllSteps(string filter)
@@ -272,7 +334,7 @@ namespace DevClient.Clients.Fitness
 
         public async Task<DailyFitnessSnapshot> GetDailySnapshot()
         {
-            var exercisesTask  = Get24HourExercises();
+            var exercisesTask  = GetDayExercises(DateOnly.FromDateTime(DateTime.Today.AddDays(-1)));
             var stepsTask      = Get24HourStepCount();
             var sleepTask      = Get24HourSleep();
             var hrTask         = GetRestingHeartRate(1);
@@ -479,6 +541,10 @@ namespace DevClient.Clients.Fitness
         {
             Log.Information("GoogleHealthClient.PostDailyFitnessStats: START");
             var snapshot = await GetDailySnapshot();
+            Log.Information("GoogleHealthClient.PostDailyFitnessStats: Activities: {Activities}",
+                snapshot.Activities.Count == 0
+                    ? "none"
+                    : string.Join(", ", snapshot.Activities.Select(a => $"{a.Name} ({a.Minutes} min)")));
             var dailyEmbed = BuildDailyEmbed(_settings.Username, snapshot);
             await _discordClient.PostEmbed(_settings.ChannelId, dailyEmbed);
             _fitnessRepository?.LogPost(_settings.Username, "daily");
@@ -683,7 +749,10 @@ namespace DevClient.Clients.Fitness
             // Format: "900s"
             if (string.IsNullOrEmpty(duration)) return 0;
             var trimmed = duration.TrimEnd('s');
-            return int.TryParse(trimmed, out var secs) ? secs : 0;
+            if (int.TryParse(trimmed, out var secs)) return secs;
+            return double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out var fractionalSecs)
+                ? (int)Math.Round(fractionalSecs)
+                : 0;
         }
     }
 }
