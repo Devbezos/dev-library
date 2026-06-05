@@ -59,7 +59,7 @@ namespace DevClient.Clients.Fitness
             return _accessToken;
         }
 
-        private async Task<string?> FetchRaw(string dataType, string? filter = null, string? pageToken = null)
+        protected virtual async Task<string?> FetchRaw(string dataType, string? filter = null, string? pageToken = null)
         {
             var token = await GetAccessToken();
 
@@ -93,12 +93,25 @@ namespace DevClient.Clients.Fitness
             return JsonConvert.DeserializeObject<T>(json);
         }
 
+        private async Task<List<GoogleHealthDataPoint>> FetchAllExercises(string filter)
+        {
+            var exercises = new List<GoogleHealthDataPoint>();
+            string? nextPage = null;
+            do
+            {
+                var result = await FetchDataType<GoogleHealthDataPointsResponse>("exercise", filter, nextPage);
+                if (result == null) break;
+                exercises.AddRange(result.DataPoints);
+                nextPage = result.NextPageToken;
+            } while (!string.IsNullOrEmpty(nextPage));
+
+            return exercises;
+        }
+
         public async Task<List<GoogleHealthDataPoint>> Get24HourExercises()
         {
             var since = DateTime.Today.AddDays(-1).ToString("yyyy-MM-ddTHH:mm:ss");
-            var result = await FetchDataType<GoogleHealthDataPointsResponse>("exercise",
-                $"exercise.interval.civil_start_time >= \"{since}\"");
-            return result?.DataPoints ?? new List<GoogleHealthDataPoint>();
+            return await FetchAllExercises($"exercise.interval.civil_start_time >= \"{since}\"");
         }
 
         private async Task<long> FetchAllSteps(string filter)
@@ -145,9 +158,7 @@ namespace DevClient.Clients.Fitness
         public async Task<List<GoogleHealthDataPoint>> Get7DayExercises()
         {
             var sevenDaysAgo = DateTime.Now.AddDays(-7).Date.ToString("yyyy-MM-ddTHH:mm:ss");
-            var result = await FetchDataType<GoogleHealthDataPointsResponse>("exercise",
-                $"exercise.interval.civil_start_time >= \"{sevenDaysAgo}\"");
-            return result?.DataPoints ?? new List<GoogleHealthDataPoint>();
+            return await FetchAllExercises($"exercise.interval.civil_start_time >= \"{sevenDaysAgo}\"");
         }
 
         public async Task<long> Get7DayStepCount()
@@ -203,9 +214,7 @@ namespace DevClient.Clients.Fitness
         public async Task<List<GoogleHealthDataPoint>> GetWeekSoFarExercises()
         {
             var since = GetStartOfWeek().ToString("yyyy-MM-ddTHH:mm:ss");
-            var result = await FetchDataType<GoogleHealthDataPointsResponse>("exercise",
-                $"exercise.interval.civil_start_time >= \"{since}\"");
-            return result?.DataPoints ?? new List<GoogleHealthDataPoint>();
+            return await FetchAllExercises($"exercise.interval.civil_start_time >= \"{since}\"");
         }
 
         public async Task<long> GetWeekSoFarStepCount()
