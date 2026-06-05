@@ -14,6 +14,7 @@ namespace DevClient.Clients.Fitness
 {
     public class GoogleHealthClient
     {
+        private const double MinimumLoggedCaloriesForDeficit = 1000;
         private readonly ICustomDiscordClient _discordClient;
         private readonly GoogleHealthUserSettings _settings;
         private readonly IFitnessRepository? _fitnessRepository;
@@ -523,9 +524,13 @@ namespace DevClient.Clients.Fitness
                 .Where(g => g.Key != DateTime.MinValue)
                 .ToDictionary(g => g.Key, g => g.Sum(p => p.Nutrition.Nutrients.Calories ?? 0));
 
-            int calorieLoggedDays = caloriesByDay.Values.Count(c => c >= 1000);
+            var loggedCaloriesByDay = caloriesByDay
+                .Where(x => x.Value >= MinimumLoggedCaloriesForDeficit)
+                .ToDictionary(x => x.Key, x => x.Value);
+
+            int calorieLoggedDays = loggedCaloriesByDay.Count;
             var totalCaloriesFromMetrics = exercisesTask.Result.Sum(e => e.Exercise.MetricsSummary.CaloriesKcal ?? 0);
-            var totalCaloriesEaten = nutritionTask.Result.Sum(p => p.Nutrition.Nutrients.Calories ?? 0);
+            var totalLoggedCaloriesEaten = loggedCaloriesByDay.Values.Sum();
 
             double totalCaloriesBurnt = 0;
             if (totalCaloriesFromMetrics > 0)
@@ -568,8 +573,8 @@ namespace DevClient.Clients.Fitness
                 }
             }
 
-            double? avgDailyDeficit = (totalCaloriesBurnt > 0 || totalCaloriesEaten > 0)
-                ? (totalCaloriesBurnt - totalCaloriesEaten) / 7.0
+            double? avgDailyDeficit = calorieLoggedDays > 0
+                ? (totalCaloriesBurnt / 7.0) - (totalLoggedCaloriesEaten / calorieLoggedDays)
                 : null;
 
             return new WeeklyFitnessSnapshot
