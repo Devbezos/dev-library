@@ -47,6 +47,12 @@ namespace DevClient.Clients
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
         }
 
+        private static bool HasPreorderSignal(HtmlNode node)
+        {
+            var text = HtmlEntity.DeEntitize(node.InnerText);
+            return Regex.IsMatch(text, @"\bpre[\s\-_/\.]*orders?\b|\bpreorders?\b", RegexOptions.IgnoreCase);
+        }
+
         private async Task<List<Search>> FetchCatalogs((string Url, string Category)[] catalogs, string keyword, string logPrefix)
         {
             var results = new List<Search>();
@@ -76,6 +82,9 @@ namespace DevClient.Clients
                         if (nameNode == null || priceNode == null || linkNode == null) continue;
 
                         var name = nameNode.InnerText.Trim();
+                        if (HasPreorderSignal(node) && !TcgPreorderClassifier.IsPreorder(name))
+                            name = $"Pre-Order {name}";
+
                         var raw = priceNode.InnerText.Trim();
                         var price = "$" + Regex.Replace(raw, @"^[^\d]*", "").Trim();
                         var href = linkNode.GetAttributeValue("href", "");
