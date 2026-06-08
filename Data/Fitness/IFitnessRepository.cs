@@ -8,7 +8,9 @@ namespace DevClient.Data.Fitness
         GoogleHealthUserSettings[] GetGoogleHealthSettings();
         GoogleHealthUserSettings[] GetGoogleHealthSettingsAll();
         void UpsertFitnessUser(string username, ulong channelId, bool enabled,
-            string clientId, string clientSecret, string refreshToken, double? highestWeightLbs = null);
+            string clientId, string clientSecret, string refreshToken, double? highestWeightLbs = null,
+            string weightSheetId = "", string weightSheetName = "", string weightSheetDateColumn = "",
+            string weightSheetWeightColumn = "");
         void DeleteUser(string username);
         void UpdateUser(string username, ulong channelId, bool enabled);
         void UpdateRefreshToken(string username, string refreshToken);

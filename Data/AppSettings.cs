@@ -10,19 +10,34 @@ namespace DevClient.Data
         public static GuildSettings[] Guilds { get; set; } = [];
         public static SoundboardSettings Soundboard { get; set; } = new();
         public static string BasePath { get; set; } = $"{Path.GetPathRoot(AppContext.BaseDirectory)}Code";
+        public static string ApiSettingsPath { get; set; } = string.Empty;
 
         public static MySqlSettings MySql { get; set; } = new();
         public static WarcraftLogsSettings? WarcraftLogs { get; set; }
         public static GoogleHealthUserSettings[] GoogleHealth { get; set; } = Array.Empty<GoogleHealthUserSettings>();
+        public static FitnessWeightSheetSettings FitnessWeightSheet { get; set; } = new();
 
         public static void Initialize()
         {
-            var config = new ConfigurationBuilder()
+            var localConfig = new ConfigurationBuilder()
                 .SetBasePath(AppContext.BaseDirectory)
                 .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
                 .Build();
 
+            ApiSettingsPath = ResolveApiSettingsPath(localConfig.GetValue<string>("apiSettingsPath"));
+
+            var builder = new ConfigurationBuilder()
+                .SetBasePath(AppContext.BaseDirectory);
+
+            if (!string.IsNullOrWhiteSpace(ApiSettingsPath))
+                builder.AddJsonFile(ApiSettingsPath, optional: true, reloadOnChange: false);
+
+            var config = builder
+                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
+                .Build();
+
             DryRun = config.GetValue<bool>("dryRun");
+            ApiSettingsPath = config.GetValue<string>("apiSettingsPath") ?? ApiSettingsPath;
             Discord = config.GetSection("discord").Get<DiscordSettings>() ?? new();
             BattleNet = config.GetSection("battleNet").Get<BattleNetSettings>() ?? new();
             Guilds = config.GetSection("guilds").Get<GuildSettings[]>() ?? Array.Empty<GuildSettings>();
@@ -30,6 +45,29 @@ namespace DevClient.Data
             MySql = config.GetSection("mySql").Get<MySqlSettings>() ?? new MySqlSettings();
             WarcraftLogs = config.GetSection("warcraftLogs").Get<WarcraftLogsSettings>();
             GoogleHealth = config.GetSection("googleHealth").Get<GoogleHealthUserSettings[]>() ?? Array.Empty<GoogleHealthUserSettings>();
+            FitnessWeightSheet = config.GetSection("fitnessWeightSheet").Get<FitnessWeightSheetSettings>() ?? new FitnessWeightSheetSettings();
+        }
+
+        private static string ResolveApiSettingsPath(string? configuredPath)
+        {
+            if (!string.IsNullOrWhiteSpace(configuredPath))
+                return Path.GetFullPath(configuredPath);
+
+            var envPath = Environment.GetEnvironmentVariable("DEV_API_APPSETTINGS");
+            if (!string.IsNullOrWhiteSpace(envPath))
+                return Path.GetFullPath(envPath);
+
+            var directory = new DirectoryInfo(AppContext.BaseDirectory);
+            while (directory != null)
+            {
+                var sibling = Path.GetFullPath(Path.Combine(directory.FullName, "..", "dev-api", "appsettings.json"));
+                if (File.Exists(sibling))
+                    return sibling;
+
+                directory = directory.Parent;
+            }
+
+            return string.Empty;
         }
     }
 
@@ -121,6 +159,11 @@ namespace DevClient.Data
         public required string Name { get; set; }
     }
 
+    public class FitnessWeightSheetSettings
+    {
+        public string CredentialsPath { get; set; } = string.Empty;
+    }
+
     public class GoogleHealthUserSettings
     {
         public string Username { get; set; } = string.Empty;
@@ -131,6 +174,10 @@ namespace DevClient.Data
         public bool Enabled { get; set; } = true;
         public bool IsDeleted { get; set; } = false;
         public double? HighestWeightLbs { get; set; }
+        public string WeightSheetId { get; set; } = string.Empty;
+        public string WeightSheetName { get; set; } = string.Empty;
+        public string WeightSheetDateColumn { get; set; } = string.Empty;
+        public string WeightSheetWeightColumn { get; set; } = string.Empty;
     }
 }
 

@@ -6,6 +6,9 @@ using Serilog;
 using Google.Apis.Services;
 using Google.Apis.Sheets.v4;
 using Google.Apis.Sheets.v4.Data;
+using DevClient.Data.Fitness;
+using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace DevClient.Clients
 {
@@ -23,21 +26,121 @@ namespace DevClient.Clients
 
         private SheetsService GetSheetsService()
         {
+            return GetSheetsService(Sheet.CredentialsPath, Sheet.SheetName);
+        }
+
+        private static SheetsService GetSheetsService(string credentialsPath, string applicationName)
+        {
             Log.Debug("GoogleSheetsClient.GetSheetsService: START");
             GoogleCredential credential;
-            using (var stream = new FileStream(Sheet.CredentialsPath, FileMode.Open, FileAccess.Read))
+            using (var stream = new FileStream(credentialsPath, FileMode.Open, FileAccess.Read))
             {
-                credential = GoogleCredential.FromStream(stream).CreateScoped(Scopes);
+                credential = GoogleCredential.FromStream(stream).CreateScoped(SheetsService.Scope.Spreadsheets);
             }
 
             var service = new SheetsService(new BaseClientService.Initializer()
             {
                 HttpClientInitializer = credential,
-                ApplicationName = Sheet.SheetName,
+                ApplicationName = applicationName,
             });
 
             Log.Debug("GoogleSheetsClient.GetSheetsService: END");
             return service;
+        }
+
+        public async Task<bool> UpdateFitnessWeight(GoogleHealthUserSettings user, double weightLbs, DateTime postedAt)
+        {
+            if (string.IsNullOrWhiteSpace(user.WeightSheetId)
+                || string.IsNullOrWhiteSpace(user.WeightSheetName)
+                || string.IsNullOrWhiteSpace(user.WeightSheetDateColumn)
+                || string.IsNullOrWhiteSpace(user.WeightSheetWeightColumn)
+                || string.IsNullOrWhiteSpace(AppSettings.FitnessWeightSheet.CredentialsPath))
+            {
+                return false;
+            }
+
+            var dateColumn = NormalizeColumn(user.WeightSheetDateColumn);
+            var weightColumn = NormalizeColumn(user.WeightSheetWeightColumn);
+            var service = GetSheetsService(AppSettings.FitnessWeightSheet.CredentialsPath, "Fitness Weight");
+            var dateRange = $"'{EscapeSheetName(user.WeightSheetName)}'!{dateColumn}:{dateColumn}";
+            var dateRequest = service.Spreadsheets.Values.Get(user.WeightSheetId, dateRange);
+            var dateResponse = await dateRequest.ExecuteAsync();
+            var targetDate = DateOnly.FromDateTime(postedAt);
+            var rowIndex = FindDateRow(dateResponse.Values, targetDate);
+
+            if (rowIndex == null)
+            {
+                Log.Warning(
+                    "GoogleSheetsClient.UpdateFitnessWeight: no matching date {Date} found for {Username} in {SheetName}!{DateColumn}",
+                    targetDate, user.Username, user.WeightSheetName, dateColumn);
+                return false;
+            }
+
+            var updateRange = $"'{EscapeSheetName(user.WeightSheetName)}'!{weightColumn}{rowIndex.Value}";
+            var requestBody = new ValueRange
+            {
+                Values = new List<IList<object>>
+                {
+                    new List<object> { Math.Round(weightLbs, 1) }
+                }
+            };
+
+            var updateRequest = service.Spreadsheets.Values.Update(requestBody, user.WeightSheetId, updateRange);
+            updateRequest.ValueInputOption = SpreadsheetsResource.ValuesResource.UpdateRequest.ValueInputOptionEnum.USERENTERED;
+            await updateRequest.ExecuteAsync();
+            return true;
+        }
+
+        private static string EscapeSheetName(string sheetName) => sheetName.Replace("'", "''", StringComparison.Ordinal);
+
+        private static string NormalizeColumn(string column)
+        {
+            var normalized = Regex.Replace(column.Trim(), "[^A-Za-z]", "").ToUpperInvariant();
+            if (string.IsNullOrWhiteSpace(normalized))
+                throw new ArgumentException("Sheet column must contain at least one letter.", nameof(column));
+            return normalized;
+        }
+
+        private static int? FindDateRow(IList<IList<object>>? rows, DateOnly targetDate)
+        {
+            if (rows == null) return null;
+
+            for (var i = 0; i < rows.Count; i++)
+            {
+                if (rows[i].Count == 0) continue;
+                if (TryParseSheetDate(rows[i][0]?.ToString(), out var cellDate) && cellDate == targetDate)
+                    return i + 1;
+            }
+
+            return null;
+        }
+
+        private static bool TryParseSheetDate(string? value, out DateOnly date)
+        {
+            date = default;
+            if (string.IsNullOrWhiteSpace(value)) return false;
+
+            var text = value.Trim();
+            if (DateOnly.TryParse(text, CultureInfo.CurrentCulture, DateTimeStyles.None, out date)
+                || DateOnly.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out date))
+            {
+                return true;
+            }
+
+            if (DateTime.TryParse(text, CultureInfo.CurrentCulture, DateTimeStyles.AssumeLocal, out var dateTime)
+                || DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out dateTime))
+            {
+                date = DateOnly.FromDateTime(dateTime);
+                return true;
+            }
+
+            if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var serial) && serial > 0)
+            {
+                date = DateOnly.FromDateTime(DateTime.FromOADate(serial));
+                return true;
+            }
+
+            return false;
         }
 
         private async Task<List<ItemUpgrade>> ReadEntries()
