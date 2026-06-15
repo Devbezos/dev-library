@@ -1,16 +1,18 @@
 using DevClient.Data;
 using DevClient.Data.WoW.WoWUtils;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using Serilog;
+using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Collections.Concurrent;
 
 namespace DevClient.Clients
 {
     public class WoWUtilsClient : IWoWUtilsClient
     {
         private readonly IHttpClientFactory _httpClientFactory;
+        private readonly ConcurrentDictionary<string, string> _groupIdByApiKey = new(StringComparer.Ordinal);
 
         public WoWUtilsClient(IHttpClientFactory httpClientFactory) => _httpClientFactory = httpClientFactory;
 
@@ -35,33 +37,21 @@ namespace DevClient.Clients
             return result!;
         }
 
-        /// <summary>
-        /// Imports a droptimizer report into a WoW Utils group wishlist.
-        /// POST /api/groups/{groupId}/wishlists/{characterSlug}/droptimizer
-        /// The server automatically routes item gains into the correct difficulty slot (N/H/M/M+).
-        /// </summary>
         public async Task<WoWUtilsImportResponse> ImportDroptimizer(
-            string groupId, string characterSlug, WoWUtilsFetchResponse report, string reportId, string sessionCookie)
+            string? groupId, string reportUrlOrId, string apiKey, string? profileKey = null)
         {
-            Log.Information("WoWUtilsClient.ImportDroptimizer: START {CharacterSlug} {ReportId}", characterSlug, reportId);
+            groupId = await ResolveGroupId(groupId, apiKey);
+            Log.Information("WoWUtilsClient.ImportDroptimizer: START {GroupId} {Report}", groupId, reportUrlOrId);
 
-            var (parsedName, _, parsedClass, parsedSpec) = ParseSimcCharacter(report.RawFormData?.Text);
-
-            var body = new JObject
+            var body = new
             {
-                ["characterName"]  = report.CharacterName  ?? parsedName,
-                ["characterClass"] = report.CharacterClass ?? parsedClass,
-                ["characterSpec"]  = report.CharacterSpec  ?? parsedSpec,
-                ["reportId"]       = reportId,
-                ["reportUrl"]      = $"https://www.raidbots.com/simbot/report/{reportId}",
-                ["baselineDps"]    = report.BaselineDps,
-                ["simSettings"]    = report.SimSettings,
-                ["itemGains"]      = report.ItemGains
+                url = reportUrlOrId,
+                profileKey
             };
 
-            using var client = BuildHttpClient(sessionCookie);
-            var content = new StringContent(body.ToString(Formatting.None), Encoding.UTF8, "application/json");
-            var url = $"{Constants.WoW.WoWUtils.BaseUrl}/api/groups/{groupId}/wishlists/{characterSlug}/droptimizer";
+            using var client = BuildHttpClient(apiKey);
+            var content = new StringContent(JsonConvert.SerializeObject(body), Encoding.UTF8, "application/json");
+            var url = $"{Constants.WoW.WoWUtils.BaseUrl}/v1/groups/{groupId}/droptimizers";
 
             var response = await client.PostAsync(url, content);
             var responseJson = await response.Content.ReadAsStringAsync();
@@ -69,9 +59,39 @@ namespace DevClient.Clients
             Log.Information("WoWUtilsClient.ImportDroptimizer: END status={Status}", (int)response.StatusCode);
 
             if (!response.IsSuccessStatusCode)
-                throw new HttpRequestException($"WoW Utils import failed ({(int)response.StatusCode}): {responseJson}");
+                throw new HttpRequestException(
+                    $"WoW Utils import failed ({(int)response.StatusCode}): {responseJson}",
+                    null,
+                    response.StatusCode);
 
             return JsonConvert.DeserializeObject<WoWUtilsImportResponse>(responseJson)!;
+        }
+
+        private async Task<string> ResolveGroupId(string? configuredGroupId, string apiKey)
+        {
+            if (!string.IsNullOrWhiteSpace(configuredGroupId))
+                return configuredGroupId;
+
+            if (_groupIdByApiKey.TryGetValue(apiKey, out var cachedGroupId))
+                return cachedGroupId;
+
+            using var client = BuildHttpClient(apiKey);
+            var response = await client.GetAsync($"{Constants.WoW.WoWUtils.BaseUrl}/v1/groups");
+            var responseJson = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+                throw new HttpRequestException(
+                    $"WoW Utils group lookup failed ({(int)response.StatusCode}): {responseJson}",
+                    null,
+                    response.StatusCode);
+
+            var groups = JsonConvert.DeserializeObject<WoWUtilsGroupListResponse>(responseJson);
+            var groupId = groups?.Data?.FirstOrDefault()?.GroupId;
+            if (string.IsNullOrWhiteSpace(groupId))
+                throw new InvalidOperationException("WoW Utils group lookup returned no groupId");
+
+            _groupIdByApiKey[apiKey] = groupId;
+            return groupId;
         }
 
         /// <summary>
@@ -138,13 +158,16 @@ namespace DevClient.Clients
             return m.Success ? m.Groups[1].Value : null;
         }
 
-        private HttpClient BuildHttpClient(string? sessionCookie = null)
+        private HttpClient BuildHttpClient(string? apiKey = null)
         {
             var client = _httpClientFactory.CreateClient();
             client.DefaultRequestHeaders.Add("User-Agent",
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36");
-            if (!string.IsNullOrEmpty(sessionCookie))
-                client.DefaultRequestHeaders.Add("Cookie", sessionCookie);
+            if (!string.IsNullOrWhiteSpace(apiKey))
+            {
+                client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", $"Bearer {apiKey}");
+                client.DefaultRequestHeaders.TryAddWithoutValidation("X-API-Key", apiKey);
+            }
             return client;
         }
     }

@@ -101,7 +101,7 @@ namespace DevClient.Data
 
         // WoWUtils
         public string? GroupId { get; set; }
-        public string? SessionCookie { get; set; }
+        public string? ApiKey { get; set; }
 
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }

@@ -41,7 +41,7 @@ namespace DevClient.Data
 
             public static class WoWUtils
             {
-                public const string BaseUrl = "https://wowutils.com/viserio-cooldowns";
+                public const string BaseUrl = "https://api.wowutils.com";
             }
 
             public static class BattleNet
