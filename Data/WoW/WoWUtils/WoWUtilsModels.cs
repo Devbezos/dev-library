@@ -44,28 +44,37 @@ namespace DevClient.Data.WoW.WoWUtils
         public string Text { get; set; } = string.Empty;
     }
 
-    /// <summary>
-    /// Response from POST /api/groups/{groupId}/wishlists/{characterSlug}/droptimizer
-    /// </summary>
     public class WoWUtilsImportResponse
     {
-        [JsonProperty("import")]
-        public WoWUtilsImport Import { get; set; } = new();
+        [JsonProperty("characterId")]
+        public string CharacterId { get; set; } = string.Empty;
+
+        [JsonProperty("profileKey")]
+        public string? ProfileKey { get; set; }
+
+        [JsonProperty("source")]
+        public string Source { get; set; } = string.Empty;
+
+        [JsonProperty("importedAt")]
+        public DateTime ImportedAt { get; set; }
+
+        [JsonProperty("reportUrl")]
+        public string ReportUrl { get; set; } = string.Empty;
+
+        [JsonProperty("warnings")]
+        public string[] Warnings { get; set; } = [];
     }
 
-    public class WoWUtilsImport
+    public class WoWUtilsGroupListResponse
     {
-        [JsonProperty("_id")]
-        public string Id { get; set; } = string.Empty;
+        [JsonProperty("data")]
+        public WoWUtilsGroupSummary[] Data { get; set; } = [];
+    }
 
-        [JsonProperty("characterName")]
-        public string CharacterName { get; set; } = string.Empty;
-
-        [JsonProperty("characterSpec")]
-        public string CharacterSpec { get; set; } = string.Empty;
-
-        [JsonProperty("reportId")]
-        public string ReportId { get; set; } = string.Empty;
+    public class WoWUtilsGroupSummary
+    {
+        [JsonProperty("groupId")]
+        public string GroupId { get; set; } = string.Empty;
     }
 }
 
