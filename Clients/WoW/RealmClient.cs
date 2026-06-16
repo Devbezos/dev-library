@@ -33,7 +33,12 @@ namespace DevClient
                 if (realmData.Status.Name.ToUpper() == "UP")
                 {
                     foreach (var guild in AppSettings.Guilds.Where(g => g.Features.ServerAvailability))
-                        await _discordClient.PostToChannel(guild.Channels.GetValueOrDefault("general"), $"Servers are back online! maybe? :3 <@&{string.Join("><@&", guild.RolesToPing)}>");
+                    {
+                        var roles = BuildRoleMentions(guild.RolesToPing);
+                        await _discordClient.PostToChannel(
+                            guild.Channels.GetValueOrDefault("general"),
+                            $"Servers are back online! maybe? :3{roles}");
+                    }
 
                     return true;
                 }
@@ -45,6 +50,18 @@ namespace DevClient
             }
 
             return false;
+        }
+
+        private static string BuildRoleMentions(IEnumerable<string>? rolesToPing)
+        {
+            var mentions = rolesToPing?
+                .Where(role => !string.IsNullOrWhiteSpace(role))
+                .Select(role => $"<@&{role.Trim()}>")
+                .ToArray();
+
+            return mentions is { Length: > 0 }
+                ? $" {string.Join(" ", mentions)}"
+                : string.Empty;
         }
 
     }
