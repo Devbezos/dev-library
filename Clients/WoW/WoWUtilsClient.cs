@@ -5,7 +5,6 @@ using Serilog;
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Collections.Concurrent;
 
 namespace DevClient.Clients
 {
@@ -23,7 +22,6 @@ namespace DevClient.Clients
     public class WoWUtilsClient : IWoWUtilsClient
     {
         private readonly IHttpClientFactory _httpClientFactory;
-        private readonly ConcurrentDictionary<string, string> _groupIdByApiKey = new(StringComparer.Ordinal);
 
         public WoWUtilsClient(IHttpClientFactory httpClientFactory) => _httpClientFactory = httpClientFactory;
 
@@ -51,7 +49,9 @@ namespace DevClient.Clients
         public async Task<WoWUtilsImportResponse> ImportDroptimizer(
             string? groupId, string reportUrlOrId, string apiKey, string? profileKey = null)
         {
-            groupId = await ResolveGroupId(groupId, apiKey);
+            if (string.IsNullOrWhiteSpace(groupId))
+                throw new InvalidOperationException("WoW Utils groupId is required for droptimizer imports");
+
             Log.Information("WoWUtilsClient.ImportDroptimizer: START {GroupId} {Report}", groupId, reportUrlOrId);
 
             var body = new
@@ -76,33 +76,6 @@ namespace DevClient.Clients
                     responseJson);
 
             return JsonConvert.DeserializeObject<WoWUtilsImportResponse>(responseJson)!;
-        }
-
-        private async Task<string> ResolveGroupId(string? configuredGroupId, string apiKey)
-        {
-            if (!string.IsNullOrWhiteSpace(configuredGroupId))
-                return configuredGroupId;
-
-            if (_groupIdByApiKey.TryGetValue(apiKey, out var cachedGroupId))
-                return cachedGroupId;
-
-            using var client = BuildHttpClient(apiKey);
-            var response = await client.GetAsync($"{Constants.WoW.WoWUtils.BaseUrl}/v1/groups");
-            var responseJson = await response.Content.ReadAsStringAsync();
-
-            if (!response.IsSuccessStatusCode)
-                throw CreateApiException(
-                    $"WoW Utils group lookup failed ({(int)response.StatusCode}): {responseJson}",
-                    response.StatusCode,
-                    responseJson);
-
-            var groups = JsonConvert.DeserializeObject<WoWUtilsGroupListResponse>(responseJson);
-            var groupId = groups?.Data?.FirstOrDefault()?.GroupId;
-            if (string.IsNullOrWhiteSpace(groupId))
-                throw new InvalidOperationException("WoW Utils group lookup returned no groupId");
-
-            _groupIdByApiKey[apiKey] = groupId;
-            return groupId;
         }
 
         /// <summary>
