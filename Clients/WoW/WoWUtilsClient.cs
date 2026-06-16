@@ -9,6 +9,17 @@ using System.Collections.Concurrent;
 
 namespace DevClient.Clients
 {
+    public sealed class WoWUtilsApiException : HttpRequestException
+    {
+        public WoWUtilsApiException(string message, HttpStatusCode statusCode, string? apiMessage = null)
+            : base(message, null, statusCode)
+        {
+            ApiMessage = apiMessage;
+        }
+
+        public string? ApiMessage { get; }
+    }
+
     public class WoWUtilsClient : IWoWUtilsClient
     {
         private readonly IHttpClientFactory _httpClientFactory;
@@ -59,10 +70,10 @@ namespace DevClient.Clients
             Log.Information("WoWUtilsClient.ImportDroptimizer: END status={Status}", (int)response.StatusCode);
 
             if (!response.IsSuccessStatusCode)
-                throw new HttpRequestException(
+                throw CreateApiException(
                     $"WoW Utils import failed ({(int)response.StatusCode}): {responseJson}",
-                    null,
-                    response.StatusCode);
+                    response.StatusCode,
+                    responseJson);
 
             return JsonConvert.DeserializeObject<WoWUtilsImportResponse>(responseJson)!;
         }
@@ -80,10 +91,10 @@ namespace DevClient.Clients
             var responseJson = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
-                throw new HttpRequestException(
+                throw CreateApiException(
                     $"WoW Utils group lookup failed ({(int)response.StatusCode}): {responseJson}",
-                    null,
-                    response.StatusCode);
+                    response.StatusCode,
+                    responseJson);
 
             var groups = JsonConvert.DeserializeObject<WoWUtilsGroupListResponse>(responseJson);
             var groupId = groups?.Data?.FirstOrDefault()?.GroupId;
@@ -169,6 +180,24 @@ namespace DevClient.Clients
                 client.DefaultRequestHeaders.TryAddWithoutValidation("X-API-Key", apiKey);
             }
             return client;
+        }
+
+        private static WoWUtilsApiException CreateApiException(string fallbackMessage, HttpStatusCode statusCode, string responseJson)
+        {
+            var apiMessage = TryGetApiMessage(responseJson);
+            return new WoWUtilsApiException(apiMessage ?? fallbackMessage, statusCode, apiMessage);
+        }
+
+        private static string? TryGetApiMessage(string responseJson)
+        {
+            try
+            {
+                return JsonConvert.DeserializeObject<WoWUtilsErrorResponse>(responseJson)?.Error?.Message;
+            }
+            catch
+            {
+                return null;
+            }
         }
     }
 }

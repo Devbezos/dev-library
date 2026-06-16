@@ -76,6 +76,21 @@ namespace DevClient.Data.WoW.WoWUtils
         [JsonProperty("groupId")]
         public string GroupId { get; set; } = string.Empty;
     }
+
+    public class WoWUtilsErrorResponse
+    {
+        [JsonProperty("error")]
+        public WoWUtilsErrorDetail? Error { get; set; }
+    }
+
+    public class WoWUtilsErrorDetail
+    {
+        [JsonProperty("code")]
+        public string Code { get; set; } = string.Empty;
+
+        [JsonProperty("message")]
+        public string Message { get; set; } = string.Empty;
+    }
 }
 
 
