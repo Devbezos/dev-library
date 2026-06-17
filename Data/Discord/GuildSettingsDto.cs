@@ -11,6 +11,8 @@ namespace DevClient.Data.Discord
         public Dictionary<string, string> Channels { get; set; } = new();
         public string[] RolesToPing { get; set; } = [];
         public GuildFeatures Features { get; set; } = new();
+        public ApplicationReviewSettings Applications { get; set; } = new();
+        public RaiderManagementSettings RaiderManagement { get; set; } = new();
         public DroptimizerSettings? Droptimizer { get; set; }
         public GoogleSheetsSettings? GoogleSheet { get; set; }
         public ApplicationSheetSettings? ApplicationSheet { get; set; }
@@ -24,6 +26,8 @@ namespace DevClient.Data.Discord
             Channels = g.Channels?.ToDictionary(k => k.Key, v => v.Value.ToString()) ?? new(),
             RolesToPing = g.RolesToPing ?? [],
             Features = g.Features ?? new(),
+            Applications = g.Applications ?? new(),
+            RaiderManagement = g.RaiderManagement ?? new(),
             Droptimizer = g.Droptimizer,
             GoogleSheet = g.GoogleSheet,
             ApplicationSheet = g.ApplicationSheet,
@@ -36,6 +40,8 @@ namespace DevClient.Data.Discord
             Channels = Channels.ToDictionary(k => k.Key, v => ulong.TryParse(v.Value, out var id) ? id : 0UL),
             RolesToPing = RolesToPing,
             Features = Features,
+            Applications = Applications ?? new(),
+            RaiderManagement = RaiderManagement ?? new(),
             Droptimizer = Droptimizer,
             GoogleSheet = GoogleSheet,
             ApplicationSheet = ApplicationSheet,

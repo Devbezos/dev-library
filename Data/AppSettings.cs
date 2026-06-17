@@ -77,6 +77,8 @@ namespace DevClient.Data
         public Dictionary<string, ulong> Channels { get; set; } = new();
         public string[] RolesToPing { get; set; } = [];
         public GuildFeatures Features { get; set; } = new();
+        public ApplicationReviewSettings Applications { get; set; } = new();
+        public RaiderManagementSettings RaiderManagement { get; set; } = new();
         public DroptimizerSettings? Droptimizer { get; set; }
         public GoogleSheetsSettings? GoogleSheet { get; set; }
         public ApplicationSheetSettings? ApplicationSheet { get; set; }
@@ -89,6 +91,19 @@ namespace DevClient.Data
         public bool DroptimizerReminder { get; set; }
         public bool KeyAudit { get; set; }
         public bool ServerAvailability { get; set; }
+        public bool Applications { get; set; }
+        public bool RaiderManagement { get; set; }
+    }
+
+    public class RaiderManagementSettings
+    {
+        public string[] RestrictedRoleIds { get; set; } = [];
+    }
+
+    public class ApplicationReviewSettings
+    {
+        public bool AllowXing { get; set; } = true;
+        public bool AllowChecking { get; set; } = true;
     }
 
     public class DroptimizerSettings

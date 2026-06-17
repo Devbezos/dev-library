@@ -127,6 +127,7 @@ namespace DevClient.Clients
             Logger.Debug("CheckNewApplications: START");
             var result = new List<TrackedApplication>();
             var guildsWithApps = AppSettings.Guilds.Where(g =>
+                g.Features.Applications &&
                 g.ApplicationSheet != null &&
                 g.Channels?.ContainsKey("applicationsCategory") == true &&
                 g.Channels?.ContainsKey("applicationsOfficer") == true);
