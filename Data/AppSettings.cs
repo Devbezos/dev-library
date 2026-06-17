@@ -83,7 +83,6 @@ namespace DevClient.Data
         public GoogleSheetsSettings? GoogleSheet { get; set; }
         public ApplicationSheetSettings? ApplicationSheet { get; set; }
         public ulong[] DenyUserIds { get; set; } = Array.Empty<ulong>();
-        public AutoReactionRule[] AutoReactionRules { get; set; } = [];
     }
 
     public class GuildFeatures
