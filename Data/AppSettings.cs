@@ -83,6 +83,7 @@ namespace DevClient.Data
         public GoogleSheetsSettings? GoogleSheet { get; set; }
         public ApplicationSheetSettings? ApplicationSheet { get; set; }
         public ulong[] DenyUserIds { get; set; } = Array.Empty<ulong>();
+        public AutoReactionRule[] AutoReactionRules { get; set; } = [];
     }
 
     public class GuildFeatures
@@ -154,6 +155,12 @@ namespace DevClient.Data
     {
         public ulong[] UserIds { get; set; } = Array.Empty<ulong>();
         public string SoundsPath { get; set; } = string.Empty;
+    }
+
+    public class AutoReactionRule
+    {
+        public ulong UserId { get; set; }
+        public string[] EmoteIds { get; set; } = [];
     }
 
     public class MySqlSettings
