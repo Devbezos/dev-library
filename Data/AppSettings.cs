@@ -14,6 +14,7 @@ namespace DevClient.Data
 
         public static MySqlSettings MySql { get; set; } = new();
         public static WarcraftLogsSettings? WarcraftLogs { get; set; }
+        public static GoogleSheetsCredentialsSettings GoogleSheets { get; set; } = new();
         public static GoogleHealthUserSettings[] GoogleHealth { get; set; } = Array.Empty<GoogleHealthUserSettings>();
         public static FitnessWeightSheetSettings FitnessWeightSheet { get; set; } = new();
 
@@ -44,6 +45,7 @@ namespace DevClient.Data
             Soundboard = config.GetSection("soundboard").Get<SoundboardSettings>() ?? new SoundboardSettings();
             MySql = config.GetSection("mySql").Get<MySqlSettings>() ?? new MySqlSettings();
             WarcraftLogs = config.GetSection("warcraftLogs").Get<WarcraftLogsSettings>();
+            GoogleSheets = config.GetSection("googleSheets").Get<GoogleSheetsCredentialsSettings>() ?? new GoogleSheetsCredentialsSettings();
             GoogleHealth = config.GetSection("googleHealth").Get<GoogleHealthUserSettings[]>() ?? Array.Empty<GoogleHealthUserSettings>();
             FitnessWeightSheet = config.GetSection("fitnessWeightSheet").Get<FitnessWeightSheetSettings>() ?? new FitnessWeightSheetSettings();
         }
@@ -173,6 +175,11 @@ namespace DevClient.Data
         public required string ClientId { get; set; }
         public required string ClientSecret { get; set; }
         public WarcraftLogsZone[] Zones { get; set; } = Array.Empty<WarcraftLogsZone>();
+    }
+
+    public class GoogleSheetsCredentialsSettings
+    {
+        public string CredentialsPath { get; set; } = string.Empty;
     }
 
     public class WarcraftLogsZone

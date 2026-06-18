@@ -26,12 +26,16 @@ namespace DevClient.Clients
 
         private SheetsService GetSheetsService()
         {
-            return GetSheetsService(Sheet.CredentialsPath, Sheet.SheetName);
+            return GetSheetsService(Sheet.SheetName);
         }
 
-        private static SheetsService GetSheetsService(string credentialsPath, string applicationName)
+        private static SheetsService GetSheetsService(string applicationName)
         {
             Log.Debug("GoogleSheetsClient.GetSheetsService: START");
+            var credentialsPath = AppSettings.GoogleSheets.CredentialsPath;
+            if (string.IsNullOrWhiteSpace(credentialsPath))
+                throw new InvalidOperationException("googleSheets.credentialsPath is not configured.");
+
             GoogleCredential credential;
             using (var stream = new FileStream(credentialsPath, FileMode.Open, FileAccess.Read))
             {
@@ -48,41 +52,20 @@ namespace DevClient.Clients
             return service;
         }
 
-        private static string ResolveApplicationSheetCredentialsPath(ApplicationSheetSettings settings)
-        {
-            if (!string.IsNullOrWhiteSpace(settings.CredentialsPath))
-                return settings.CredentialsPath;
-
-            var fallbackPath = AppSettings.Guilds
-                .Select(g => g.GoogleSheet?.CredentialsPath)
-                .FirstOrDefault(path => !string.IsNullOrWhiteSpace(path));
-
-            if (!string.IsNullOrWhiteSpace(fallbackPath))
-            {
-                Log.Warning(
-                    "GoogleSheetsClient: application sheet {SheetName} ({SheetId}) has no credentials path; falling back to configured guild Google Sheet credentials",
-                    settings.SheetName, settings.Id);
-                return fallbackPath;
-            }
-
-            throw new InvalidOperationException(
-                $"Application sheet '{settings.SheetName}' ({settings.Id}) has no credentials path configured and no fallback Google Sheet credentials are available.");
-        }
-
         public async Task<bool> UpdateFitnessWeight(GoogleHealthUserSettings user, double weightLbs, DateTime postedAt)
         {
             if (string.IsNullOrWhiteSpace(user.WeightSheetId)
                 || string.IsNullOrWhiteSpace(user.WeightSheetName)
                 || string.IsNullOrWhiteSpace(user.WeightSheetDateColumn)
                 || string.IsNullOrWhiteSpace(user.WeightSheetWeightColumn)
-                || string.IsNullOrWhiteSpace(AppSettings.FitnessWeightSheet.CredentialsPath))
+                || string.IsNullOrWhiteSpace(AppSettings.GoogleSheets.CredentialsPath))
             {
                 return false;
             }
 
             var dateColumn = NormalizeColumn(user.WeightSheetDateColumn);
             var weightColumn = NormalizeColumn(user.WeightSheetWeightColumn);
-            var service = GetSheetsService(AppSettings.FitnessWeightSheet.CredentialsPath, "Fitness Weight");
+            var service = GetSheetsService("Fitness Weight");
             var dateRange = $"'{EscapeSheetName(user.WeightSheetName)}'!{dateColumn}:{dateColumn}";
             var dateRequest = service.Spreadsheets.Values.Get(user.WeightSheetId, dateRange);
             var dateResponse = await dateRequest.ExecuteAsync();
@@ -249,7 +232,7 @@ namespace DevClient.Clients
 
         public async Task<List<GuildApplication>> ReadApplications(ApplicationSheetSettings settings)
         {
-            var service = GetSheetsService(ResolveApplicationSheetCredentialsPath(settings), settings.SheetName);
+            var service = GetSheetsService(settings.SheetName);
             var range = $"'{settings.SheetName}'!A:L";
             var request = service.Spreadsheets.Values.Get(settings.Id, range);
             var response = await request.ExecuteAsync();
@@ -309,7 +292,7 @@ namespace DevClient.Clients
         public async Task MarkApplicationAsPosted(ApplicationSheetSettings settings, int sheetRowNumber)
         {
             Log.Information($"GoogleSheetsClient.MarkApplicationAsPosted: row {sheetRowNumber}");
-            var service = GetSheetsService(ResolveApplicationSheetCredentialsPath(settings), settings.SheetName);
+            var service = GetSheetsService(settings.SheetName);
             var range = $"'{settings.SheetName}'!L{sheetRowNumber}";
             var requestBody = new ValueRange { Values = new List<IList<object>> { new List<object> { "TRUE" } } };
             var request = service.Spreadsheets.Values.Update(requestBody, settings.Id, range);
