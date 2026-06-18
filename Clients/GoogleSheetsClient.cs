@@ -228,8 +228,9 @@ namespace DevClient.Clients
 
         public async Task<List<GuildApplication>> ReadApplications(ApplicationSheetSettings settings)
         {
+            var service = GetSheetsService(settings.CredentialsPath, settings.SheetName);
             var range = $"'{settings.SheetName}'!A:L";
-            var request = Service.Spreadsheets.Values.Get(settings.Id, range);
+            var request = service.Spreadsheets.Values.Get(settings.Id, range);
             var response = await request.ExecuteAsync();
 
             var applications = new List<GuildApplication>();
@@ -287,9 +288,10 @@ namespace DevClient.Clients
         public async Task MarkApplicationAsPosted(ApplicationSheetSettings settings, int sheetRowNumber)
         {
             Log.Information($"GoogleSheetsClient.MarkApplicationAsPosted: row {sheetRowNumber}");
+            var service = GetSheetsService(settings.CredentialsPath, settings.SheetName);
             var range = $"'{settings.SheetName}'!L{sheetRowNumber}";
             var requestBody = new ValueRange { Values = new List<IList<object>> { new List<object> { "TRUE" } } };
-            var request = Service.Spreadsheets.Values.Update(requestBody, settings.Id, range);
+            var request = service.Spreadsheets.Values.Update(requestBody, settings.Id, range);
             request.ValueInputOption = SpreadsheetsResource.ValuesResource.UpdateRequest.ValueInputOptionEnum.RAW;
             await request.ExecuteAsync();
         }

@@ -30,7 +30,16 @@ namespace DevClient.Data.Discord
             RaiderManagement = g.RaiderManagement ?? new(),
             Droptimizer = g.Droptimizer,
             GoogleSheet = g.GoogleSheet,
-            ApplicationSheet = g.ApplicationSheet,
+            ApplicationSheet = g.ApplicationSheet == null
+                ? null
+                : new ApplicationSheetSettings
+                {
+                    Id = g.ApplicationSheet.Id,
+                    SheetName = g.ApplicationSheet.SheetName,
+                    CredentialsPath = string.IsNullOrWhiteSpace(g.ApplicationSheet.CredentialsPath)
+                        ? g.GoogleSheet?.CredentialsPath ?? string.Empty
+                        : g.ApplicationSheet.CredentialsPath
+                },
             DenyUserIds = g.DenyUserIds?.Select(id => id.ToString()).ToArray() ?? []
         };
 
@@ -44,7 +53,16 @@ namespace DevClient.Data.Discord
             RaiderManagement = RaiderManagement ?? new(),
             Droptimizer = Droptimizer,
             GoogleSheet = GoogleSheet,
-            ApplicationSheet = ApplicationSheet,
+            ApplicationSheet = ApplicationSheet == null
+                ? null
+                : new ApplicationSheetSettings
+                {
+                    Id = ApplicationSheet.Id,
+                    SheetName = ApplicationSheet.SheetName,
+                    CredentialsPath = string.IsNullOrWhiteSpace(ApplicationSheet.CredentialsPath)
+                        ? GoogleSheet?.CredentialsPath ?? string.Empty
+                        : ApplicationSheet.CredentialsPath
+                },
             DenyUserIds = DenyUserIds
                 .Select(id => ulong.TryParse(id, out var r) ? r : 0UL)
                 .Where(id => id != 0)

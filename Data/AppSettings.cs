@@ -134,6 +134,7 @@ namespace DevClient.Data
     {
         public required string Id { get; set; }
         public required string SheetName { get; set; }
+        public string CredentialsPath { get; set; } = string.Empty;
     }
 
     public class BattleNetSettings
