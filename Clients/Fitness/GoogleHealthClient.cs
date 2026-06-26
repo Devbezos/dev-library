@@ -110,12 +110,18 @@ namespace DevClient.Clients.Fitness
                 var result = await FetchDataType<GoogleHealthStepsResponse>("steps", filter, nextPage);
                 if (result == null) break;
                 if (result.DataPoints.Count > 0)
-                    total += result.DataPoints.Sum(dp => dp.Steps.GetCount());
+                    total += SumDistinctStepIntervals(result.DataPoints);
                 nextPage = result.NextPageToken;
             } while (!string.IsNullOrEmpty(nextPage));
             return total;
         }
 
+        private static long SumDistinctStepIntervals(List<GoogleHealthStepsDataPoint> dataPoints)
+        {
+            return dataPoints
+                .GroupBy(dp => $"{dp.Steps.Interval.StartTime}|{dp.Steps.Interval.EndTime}", StringComparer.Ordinal)
+                .Sum(group => group.Max(dp => dp.Steps.GetCount()));
+        }
         public async Task<long> Get24HourStepCount()
         {
             var since = DateTime.Today.AddDays(-1).ToString("yyyy-MM-ddTHH:mm:ss");
@@ -678,6 +684,7 @@ namespace DevClient.Clients.Fitness
         }
     }
 }
+
 
 
 
