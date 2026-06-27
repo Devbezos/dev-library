@@ -110,8 +110,6 @@ namespace DevClient.Data
 
     public class DroptimizerSettings
     {
-        /// <summary>"wowaudit" (default) or "wowutils"</summary>
-        public string Source { get; set; } = "wowaudit";
 
         // WoWAudit
         public string? Token { get; set; }
@@ -163,6 +161,7 @@ namespace DevClient.Data
     {
         public ulong UserId { get; set; }
         public string[] EmoteIds { get; set; } = [];
+        public string[] ProfilePictureGifUrls { get; set; } = [];
     }
 
     public class MySqlSettings
@@ -209,6 +208,8 @@ namespace DevClient.Data
         public string WeightSheetWeightColumn { get; set; } = string.Empty;
     }
 }
+
+
 
 
 
