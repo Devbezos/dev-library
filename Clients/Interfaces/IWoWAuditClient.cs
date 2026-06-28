@@ -7,10 +7,8 @@ namespace DevClient.Clients
     {
         Task<List<WoWAuditCharacter>> GetCharacters(string guild);
         Task<WoWAuditWishlistResponse> UpdateWishlist(string reportId, string guild);
+        Task<WoWAuditCharacter> TrackCharacter(string guild, WoWAuditTrackCharacterRequest request);
+        Task UpdateCharacter(string guild, int characterId, WoWAuditUpdateCharacterRequest request);
+        Task UntrackCharacter(string guild, int characterId);
     }
 }
-
-
-
-
-

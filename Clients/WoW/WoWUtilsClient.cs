@@ -1,8 +1,10 @@
 using DevClient.Data;
 using DevClient.Data.WoW.WoWUtils;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Serilog;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -21,6 +23,12 @@ namespace DevClient.Clients
 
     public class WoWUtilsClient : IWoWUtilsClient
     {
+        private sealed class WoWUtilsTrackCharacterRequest
+        {
+            [JsonProperty("characterId")]
+            public string CharacterId { get; set; } = string.Empty;
+        }
+
         private readonly IHttpClientFactory _httpClientFactory;
 
         public WoWUtilsClient(IHttpClientFactory httpClientFactory) => _httpClientFactory = httpClientFactory;
@@ -31,10 +39,6 @@ namespace DevClient.Clients
             "mage", "monk", "paladin", "priest", "rogue", "shaman", "warlock", "warrior"
         ];
 
-        /// <summary>
-        /// Fetches the full parsed droptimizer report from WoW Utils.
-        /// GET /api/droptimizer/fetch?reportId={reportId}&amp;file=report
-        /// </summary>
         public async Task<WoWUtilsFetchResponse> GetDroptimizerReport(string reportId)
         {
             Log.Information("WoWUtilsClient.GetDroptimizerReport: START {ReportId}", reportId);
@@ -46,8 +50,39 @@ namespace DevClient.Clients
             return result!;
         }
 
-        public async Task<WoWUtilsImportResponse> ImportDroptimizer(
-            string? groupId, string reportUrlOrId, string apiKey, string? profileKey = null)
+        public Task<WoWUtilsImportResponse> ImportDroptimizer(
+            string? groupId, string reportUrlOrId, string apiKey, string? profileKey = null) =>
+            ImportDroptimizer(groupId, reportUrlOrId, apiKey, profileKey, allowRosterRecovery: true);
+
+        public async Task<IReadOnlyList<WoWUtilsRosterMember>> GetRosterMembers(string groupId, string apiKey)
+        {
+            if (string.IsNullOrWhiteSpace(groupId))
+                throw new InvalidOperationException("WoW Utils groupId is required for roster sync");
+
+            Log.Information("WoWUtilsClient.GetRosterMembers: START {GroupId}", groupId);
+            using var client = BuildHttpClient(apiKey);
+            using var response = await client.GetAsync($"{Constants.WoW.WoWUtils.BaseUrl}/v1/groups/{groupId}/roster/members");
+            var responseJson = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw CreateApiException(
+                    $"WoW Utils roster fetch failed ({(int)response.StatusCode}): {responseJson}",
+                    response.StatusCode,
+                    responseJson);
+            }
+
+            var members = ParseRosterMembers(responseJson);
+            Log.Information("WoWUtilsClient.GetRosterMembers: END {Count}", members.Count);
+            return members;
+        }
+
+        private async Task<WoWUtilsImportResponse> ImportDroptimizer(
+            string? groupId,
+            string reportUrlOrId,
+            string apiKey,
+            string? profileKey,
+            bool allowRosterRecovery)
         {
             if (string.IsNullOrWhiteSpace(groupId))
                 throw new InvalidOperationException("WoW Utils groupId is required for droptimizer imports");
@@ -70,24 +105,34 @@ namespace DevClient.Clients
             Log.Information("WoWUtilsClient.ImportDroptimizer: END status={Status}", (int)response.StatusCode);
 
             if (!response.IsSuccessStatusCode)
-                throw CreateApiException(
+            {
+                var apiException = CreateApiException(
                     $"WoW Utils import failed ({(int)response.StatusCode}): {responseJson}",
                     response.StatusCode,
                     responseJson);
 
+                if (allowRosterRecovery && IsMissingWoWUtilsRosterError(apiException.ApiMessage ?? apiException.Message))
+                {
+                    Log.Information("WoWUtilsClient.ImportDroptimizer: missing roster character for {Report}; attempting roster auto-add", reportUrlOrId);
+                    var trackedCharacterId = await TryTrackCharacterForImport(groupId, reportUrlOrId, apiKey);
+                    if (!string.IsNullOrWhiteSpace(trackedCharacterId))
+                    {
+                        Log.Information("WoWUtilsClient.ImportDroptimizer: tracked {CharacterId} in group {GroupId}; retrying import", trackedCharacterId, groupId);
+                        return await ImportDroptimizer(groupId, reportUrlOrId, apiKey, profileKey, allowRosterRecovery: false);
+                    }
+                }
+
+                throw apiException;
+            }
+
             return JsonConvert.DeserializeObject<WoWUtilsImportResponse>(responseJson)!;
         }
 
-        /// <summary>
-        /// Determines the character slug ({name}-{realm}) used in the import URL.
-        /// Parses the SimC text in rawFormData since it reliably contains server and character name.
-        /// </summary>
         public string GetCharacterSlug(WoWUtilsFetchResponse report)
         {
             var (name, realm, _, _) = ParseSimcCharacter(report.RawFormData?.Text);
 
-            // Fall back to top-level fields if SimC parse missed something
-            name  ??= report.CharacterName;
+            name ??= report.CharacterName;
             realm ??= ParseRealm(report.RawFormData?.Text);
 
             if (string.IsNullOrEmpty(name))
@@ -98,7 +143,213 @@ namespace DevClient.Clients
             return $"{name.ToLower()}-{realm.ToLower()}";
         }
 
-        // ── Private helpers ──────────────────────────────────────────────
+        private async Task<string?> TryTrackCharacterForImport(string groupId, string reportUrlOrId, string apiKey)
+        {
+            var reportId = ExtractReportId(reportUrlOrId);
+            if (string.IsNullOrWhiteSpace(reportId))
+            {
+                Log.Warning("WoWUtilsClient.ImportDroptimizer: could not determine report id from {Report}", reportUrlOrId);
+                return null;
+            }
+
+            WoWUtilsFetchResponse report;
+            try
+            {
+                report = await GetDroptimizerReport(reportId);
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                Log.Warning("WoWUtilsClient.ImportDroptimizer: report fetch returned 404 for {ReportId}; cannot auto-add roster member", reportId);
+                return null;
+            }
+
+            string characterId;
+            try
+            {
+                characterId = GetCharacterSlug(report);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "WoWUtilsClient.ImportDroptimizer: could not determine character identity for report {ReportId}", reportId);
+                return null;
+            }
+
+            await TrackWoWUtilsCharacter(groupId, apiKey, characterId);
+            return characterId;
+        }
+
+        private async Task TrackWoWUtilsCharacter(string groupId, string apiKey, string characterId)
+        {
+            using var client = BuildHttpClient(apiKey);
+            var body = new StringContent(
+                JsonConvert.SerializeObject(new WoWUtilsTrackCharacterRequest { CharacterId = characterId }),
+                Encoding.UTF8,
+                "application/json");
+
+            using var response = await client.PostAsync(
+                $"{Constants.WoW.WoWUtils.BaseUrl}/v1/groups/{groupId}/roster/members",
+                body);
+            var responseBody = await response.Content.ReadAsStringAsync();
+
+            if (response.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable)
+                throw new HttpRequestException(
+                    $"WoW Utils character tracking hit {(int)response.StatusCode}: {responseBody}",
+                    null,
+                    response.StatusCode);
+
+            if (!response.IsSuccessStatusCode)
+                throw new InvalidOperationException(
+                    $"WoW Utils character tracking failed for {characterId} ({(int)response.StatusCode}): {responseBody}");
+        }
+
+        private static IReadOnlyList<WoWUtilsRosterMember> ParseRosterMembers(string responseJson)
+        {
+            if (string.IsNullOrWhiteSpace(responseJson))
+                return [];
+
+            var token = JToken.Parse(responseJson);
+            var array = FindRosterArray(token);
+            if (array == null)
+                return [];
+
+            return array
+                .OfType<JToken>()
+                .Select(ParseRosterMember)
+                .Where(member => member != null)
+                .Select(member => member!)
+                .Where(member => !string.IsNullOrWhiteSpace(member.Name) && !string.IsNullOrWhiteSpace(member.Realm))
+                .GroupBy(member => $"{member.Name}|{member.Realm}", StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .ToList();
+        }
+
+        private static JArray? FindRosterArray(JToken token)
+        {
+            if (token is JArray directArray && LooksLikeRosterArray(directArray))
+                return directArray;
+
+            foreach (var path in new[] { "data", "members", "roster.members", "roster", "items" })
+            {
+                if (token.SelectToken(path) is JArray namedArray && LooksLikeRosterArray(namedArray, allowEmpty: true))
+                    return namedArray;
+            }
+
+            foreach (var property in token is JContainer container ? container.DescendantsAndSelf().OfType<JProperty>() : Enumerable.Empty<JProperty>())
+            {
+                if (property.Value is JArray array && LooksLikeRosterArray(array))
+                    return array;
+            }
+
+            return null;
+        }
+
+        private static bool LooksLikeRosterArray(JArray array, bool allowEmpty = false)
+        {
+            if (array.Count == 0)
+                return allowEmpty;
+
+            return array.OfType<JObject>().Any(item =>
+                HasAnyValue(item, "characterId", "character_id", "slug", "name", "character.name", "realm", "character.realm"));
+        }
+
+        private static WoWUtilsRosterMember? ParseRosterMember(JToken token)
+        {
+            if (token is not JObject item)
+                return null;
+
+            var characterId = FirstString(item,
+                "characterId",
+                "character_id",
+                "slug",
+                "character.slug",
+                "character.characterId",
+                "character.id");
+
+            var name = FirstString(item,
+                "name",
+                "characterName",
+                "character.name",
+                "character.characterName");
+
+            var realm = FirstString(item,
+                "realm",
+                "realmSlug",
+                "characterRealm",
+                "character.realm",
+                "character.realmSlug");
+
+            if ((string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(realm)) && !string.IsNullOrWhiteSpace(characterId))
+            {
+                var parsed = TryParseCharacterSlug(characterId);
+                name ??= parsed.Name;
+                realm ??= parsed.Realm;
+            }
+
+            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(realm))
+                return null;
+
+            return new WoWUtilsRosterMember
+            {
+                CharacterId = characterId ?? BuildCharacterSlug(name, realm),
+                Name = name,
+                Realm = realm,
+                Class = FirstString(item, "class", "characterClass", "character.class"),
+                Spec = FirstString(item, "spec", "characterSpec", "activeSpec", "character.spec"),
+                Role = FirstString(item, "role", "characterRole", "character.role"),
+                Rank = FirstString(item, "rank", "groupRank", "character.rank")
+            };
+        }
+
+        private static bool HasAnyValue(JObject item, params string[] paths) =>
+            paths.Any(path => !string.IsNullOrWhiteSpace(FirstString(item, path)));
+
+        private static string? FirstString(JToken token, params string[] paths)
+        {
+            foreach (var path in paths)
+            {
+                var value = token.SelectToken(path)?.Value<string>()?.Trim();
+                if (!string.IsNullOrWhiteSpace(value))
+                    return value;
+            }
+
+            return null;
+        }
+
+        private static (string? Name, string? Realm) TryParseCharacterSlug(string? characterId)
+        {
+            if (string.IsNullOrWhiteSpace(characterId))
+                return (null, null);
+
+            var separatorIndex = characterId.IndexOf('-');
+            if (separatorIndex <= 0 || separatorIndex >= characterId.Length - 1)
+                return (null, null);
+
+            return (
+                characterId[..separatorIndex].Trim(),
+                characterId[(separatorIndex + 1)..].Trim());
+        }
+
+        private static string BuildCharacterSlug(string name, string realm) =>
+            $"{name.Trim().ToLowerInvariant()}-{realm.Trim().ToLowerInvariant()}";
+
+        private static bool IsMissingWoWUtilsRosterError(string? errorMessage) =>
+            !string.IsNullOrWhiteSpace(errorMessage)
+            && (errorMessage.Contains("not on this group's roster", StringComparison.OrdinalIgnoreCase)
+                || errorMessage.Contains("not on this group�s roster", StringComparison.OrdinalIgnoreCase)
+                || errorMessage.Contains("add the character to the roster first", StringComparison.OrdinalIgnoreCase)
+                || errorMessage.Contains("nowhere to land", StringComparison.OrdinalIgnoreCase));
+
+        private static string? ExtractReportId(string reportUrlOrId)
+        {
+            if (string.IsNullOrWhiteSpace(reportUrlOrId))
+                return null;
+
+            var trimmed = reportUrlOrId.Trim().TrimEnd('/');
+            if (!trimmed.Contains('/'))
+                return trimmed;
+
+            return trimmed.Split('/').LastOrDefault();
+        }
 
         private static (string? name, string? realm, string? characterClass, string? spec) ParseSimcCharacter(string? simcText)
         {
@@ -126,10 +377,10 @@ namespace DevClient.Clients
                 }
 
                 if (trimmed.StartsWith("server=", StringComparison.OrdinalIgnoreCase))
-                    realm = trimmed.Substring(7).Trim();
+                    realm = trimmed[7..].Trim();
 
                 if (trimmed.StartsWith("spec=", StringComparison.OrdinalIgnoreCase))
-                    spec = trimmed.Substring(5).Trim();
+                    spec = trimmed[5..].Trim();
             }
 
             return (name, realm, characterClass, spec);
@@ -149,7 +400,7 @@ namespace DevClient.Clients
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36");
             if (!string.IsNullOrWhiteSpace(apiKey))
             {
-                client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", $"Bearer {apiKey}");
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
                 client.DefaultRequestHeaders.TryAddWithoutValidation("X-API-Key", apiKey);
             }
             return client;
@@ -174,8 +425,5 @@ namespace DevClient.Clients
         }
     }
 }
-
-
-
 
 

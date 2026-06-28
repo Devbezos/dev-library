@@ -16,6 +16,9 @@ namespace DevClient.Data.WoW
         [JsonProperty("class")]
         public string Class { get; set; } = string.Empty;
 
+        [JsonProperty("spec")]
+        public string Spec { get; set; } = string.Empty;
+
         [JsonProperty("role")]
         public string Role { get; set; } = string.Empty;
 
@@ -35,8 +38,3 @@ namespace DevClient.Data.WoW
         public DateTime TrackingSince { get; set; }
     }
 }
-
-
-
-
-

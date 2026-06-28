@@ -12,7 +12,6 @@ namespace DevClient.Data.WoW.WoWUtils
         [JsonProperty("rawFormData")]
         public WoWUtilsRawFormData RawFormData { get; set; } = new();
 
-        // Top-level parsed fields (populated by the wowutils server)
         [JsonProperty("characterName")]
         public string CharacterName { get; set; } = string.Empty;
 
@@ -25,11 +24,9 @@ namespace DevClient.Data.WoW.WoWUtils
         [JsonProperty("baselineDps")]
         public double BaselineDps { get; set; }
 
-        /// <summary>Sim configuration settings (fightStyle, iterations, buffs, etc.)</summary>
         [JsonProperty("simSettings")]
         public JObject SimSettings { get; set; } = new();
 
-        /// <summary>Per-item DPS gain array with itemId, slot, ilvl, difficulty, etc.</summary>
         [JsonProperty("itemGains")]
         public JArray ItemGains { get; set; } = new();
     }
@@ -39,7 +36,6 @@ namespace DevClient.Data.WoW.WoWUtils
         [JsonProperty("type")]
         public string Type { get; set; } = string.Empty;
 
-        /// <summary>Raw SimC text used to parse character name, realm, class, spec as a fallback.</summary>
         [JsonProperty("text")]
         public string Text { get; set; } = string.Empty;
     }
@@ -63,6 +59,30 @@ namespace DevClient.Data.WoW.WoWUtils
 
         [JsonProperty("warnings")]
         public string[] Warnings { get; set; } = [];
+    }
+
+    public class WoWUtilsRosterMember
+    {
+        [JsonProperty("characterId")]
+        public string CharacterId { get; set; } = string.Empty;
+
+        [JsonProperty("name")]
+        public string Name { get; set; } = string.Empty;
+
+        [JsonProperty("realm")]
+        public string Realm { get; set; } = string.Empty;
+
+        [JsonProperty("class")]
+        public string? Class { get; set; }
+
+        [JsonProperty("spec")]
+        public string? Spec { get; set; }
+
+        [JsonProperty("role")]
+        public string? Role { get; set; }
+
+        [JsonProperty("rank")]
+        public string? Rank { get; set; }
     }
 
     public class WoWUtilsGroupListResponse
@@ -92,8 +112,3 @@ namespace DevClient.Data.WoW.WoWUtils
         public string Message { get; set; } = string.Empty;
     }
 }
-
-
-
-
-

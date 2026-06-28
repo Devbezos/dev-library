@@ -4,18 +4,19 @@ namespace DevClient.Data
     {
         public static class Jobs
         {
-            public const string FitnessDaily        = "fitness_daily";
-            public const string FitnessWeekly       = "fitness_weekly";
-            public const string DroptimizerReminder = "droptimizer_reminder";
-            public const string ServerAvailability  = "server_availability";
-            public const string KeyAudit            = "key_audit";
-            public const string Tcg                 = "tcg";
-            public const string PokemonTcg          = "pokemon_tcg";
-            public const string GundamTcg           = "gundam_tcg";
-            public const string PreorderTcg         = "preorder_tcg";
-            public const string PokemonPreorderTcg  = "pokemon_preorder_tcg";
-            public const string GundamPreorderTcg   = "gundam_preorder_tcg";
-            public const string PokemonCenterSecurity = "pokemon_center_security";
+            public const string FitnessDaily            = "fitness_daily";
+            public const string FitnessWeekly           = "fitness_weekly";
+            public const string DroptimizerReminder     = "droptimizer_reminder";
+            public const string DroptimizerSync         = "droptimizer_sync";
+            public const string ServerAvailability      = "server_availability";
+            public const string KeyAudit                = "key_audit";
+            public const string Tcg                     = "tcg";
+            public const string PokemonTcg              = "pokemon_tcg";
+            public const string GundamTcg               = "gundam_tcg";
+            public const string PreorderTcg             = "preorder_tcg";
+            public const string PokemonPreorderTcg      = "pokemon_preorder_tcg";
+            public const string GundamPreorderTcg       = "gundam_preorder_tcg";
+            public const string PokemonCenterSecurity   = "pokemon_center_security";
         }
 
         public static class GoogleHealth
@@ -65,8 +66,3 @@ namespace DevClient.Data
         }
     }
 }
-
-
-
-
-
