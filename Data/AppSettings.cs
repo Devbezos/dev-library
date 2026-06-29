@@ -111,6 +111,7 @@ namespace DevClient.Data
 
     public class DroptimizerSettings
     {
+        public string? Source { get; set; }
 
         // WoWAudit
         public string? Token { get; set; }
