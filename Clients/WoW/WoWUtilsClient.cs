@@ -1,8 +1,10 @@
 using DevClient.Data;
+using DevClient.Data.WoW;
 using DevClient.Data.WoW.WoWUtils;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Serilog;
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
@@ -75,6 +77,29 @@ namespace DevClient.Clients
             var members = ParseRosterMembers(responseJson);
             Log.Information("WoWUtilsClient.GetRosterMembers: END {Count}", members.Count);
             return members;
+        }
+
+        public async Task<IReadOnlyList<RaidScheduleEvent>> GetRaidSchedule(string groupId, string apiKey)
+        {
+            if (string.IsNullOrWhiteSpace(groupId))
+                throw new InvalidOperationException("WoW Utils groupId is required for raid schedule");
+
+            Log.Information("WoWUtilsClient.GetRaidSchedule: START {GroupId}", groupId);
+            using var client = BuildHttpClient(apiKey);
+            using var response = await client.GetAsync($"{Constants.WoW.WoWUtils.BaseUrl}/v1/groups/{groupId}/calendar-events");
+            var responseJson = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw CreateApiException(
+                    $"WoW Utils raid schedule fetch failed ({(int)response.StatusCode}): {responseJson}",
+                    response.StatusCode,
+                    responseJson);
+            }
+
+            var raids = ParseRaidSchedule(responseJson);
+            Log.Information("WoWUtilsClient.GetRaidSchedule: END {Count}", raids.Count);
+            return raids;
         }
 
         private async Task<WoWUtilsImportResponse> ImportDroptimizer(
@@ -223,6 +248,25 @@ namespace DevClient.Clients
                 .ToList();
         }
 
+        private static IReadOnlyList<RaidScheduleEvent> ParseRaidSchedule(string responseJson)
+        {
+            if (string.IsNullOrWhiteSpace(responseJson))
+                return [];
+
+            var token = JToken.Parse(responseJson);
+            var array = FindRaidArray(token);
+            if (array == null)
+                return [];
+
+            return array
+                .OfType<JObject>()
+                .Select(ParseRaidEvent)
+                .Where(raid => raid != null)
+                .Select(raid => raid!)
+                .OrderBy(raid => raid.StartsAtUtc)
+                .ToList();
+        }
+
         private static JArray? FindRosterArray(JToken token)
         {
             if (token is JArray directArray && LooksLikeRosterArray(directArray))
@@ -241,6 +285,62 @@ namespace DevClient.Clients
             }
 
             return null;
+        }
+        private static JArray? FindRaidArray(JToken token)
+        {
+            if (token is JArray directArray)
+                return directArray;
+
+            foreach (var path in new[] { "data", "events", "calendarEvents", "items", "results" })
+            {
+                if (token.SelectToken(path) is JArray namedArray)
+                    return namedArray;
+            }
+
+            foreach (var property in token is JContainer container ? container.DescendantsAndSelf().OfType<JProperty>() : Enumerable.Empty<JProperty>())
+            {
+                if (property.Value is JArray array)
+                    return array;
+            }
+
+            return null;
+        }
+
+        private static RaidScheduleEvent? ParseRaidEvent(JObject item)
+        {
+            var date = FirstString(item, "date", "startDate");
+            var startTime = FirstString(item, "startTime", "time", "start");
+            if (!TryParseRaidStartUtc(date, startTime, out var startsAtUtc))
+                return null;
+
+            return new RaidScheduleEvent
+            {
+                Provider = "WoWUtils",
+                ExternalId = FirstString(item, "eventId", "id", "scheduleId") ?? Guid.NewGuid().ToString("N"),
+                Name = FirstString(item, "name", "title") ?? "Raid",
+                StartsAtUtc = startsAtUtc,
+                Difficulty = FirstString(item, "difficulty"),
+                Status = FirstString(item, "status")
+            };
+        }
+
+        private static bool TryParseRaidStartUtc(string? date, string? startTime, out DateTime startsAtUtc)
+        {
+            if (string.IsNullOrWhiteSpace(date))
+            {
+                startsAtUtc = default;
+                return false;
+            }
+
+            var combined = string.IsNullOrWhiteSpace(startTime) ? date : $"{date} {startTime}";
+            if (!DateTime.TryParse(combined, CultureInfo.InvariantCulture, DateTimeStyles.None, out var localStart))
+            {
+                startsAtUtc = default;
+                return false;
+            }
+
+            startsAtUtc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(localStart, DateTimeKind.Unspecified), TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time"));
+            return true;
         }
 
         private static bool LooksLikeRosterArray(JArray array, bool allowEmpty = false)
@@ -335,7 +435,7 @@ namespace DevClient.Clients
         private static bool IsMissingWoWUtilsRosterError(string? errorMessage) =>
             !string.IsNullOrWhiteSpace(errorMessage)
             && (errorMessage.Contains("not on this group's roster", StringComparison.OrdinalIgnoreCase)
-                || errorMessage.Contains("not on this group’s roster", StringComparison.OrdinalIgnoreCase)
+                || errorMessage.Contains("not on this group's roster", StringComparison.OrdinalIgnoreCase)
                 || errorMessage.Contains("add the character to the roster first", StringComparison.OrdinalIgnoreCase)
                 || errorMessage.Contains("nowhere to land", StringComparison.OrdinalIgnoreCase));
 

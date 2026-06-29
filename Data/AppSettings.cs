@@ -82,6 +82,7 @@ namespace DevClient.Data
         public ApplicationReviewSettings Applications { get; set; } = new();
         public RaiderManagementSettings RaiderManagement { get; set; } = new();
         public DroptimizerSettings? Droptimizer { get; set; }
+        public RaidReminderSettings RaidReminders { get; set; } = new();
         public GoogleSheetsSettings? GoogleSheet { get; set; }
         public ApplicationSheetSettings? ApplicationSheet { get; set; }
         public ulong[] DenyUserIds { get; set; } = Array.Empty<ulong>();
@@ -120,6 +121,13 @@ namespace DevClient.Data
 
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }
+    }
+
+    public class RaidReminderSettings
+    {
+        public bool Enabled { get; set; }
+        public int MinutesBefore { get; set; } = 60;
+        public bool PingRoles { get; set; } = true;
     }
 
     public class GoogleSheetsSettings

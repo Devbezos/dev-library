@@ -14,6 +14,7 @@ namespace DevClient.Data.Discord
         public ApplicationReviewSettings Applications { get; set; } = new();
         public RaiderManagementSettings RaiderManagement { get; set; } = new();
         public DroptimizerSettings? Droptimizer { get; set; }
+        public RaidReminderSettings RaidReminders { get; set; } = new();
         public GoogleSheetsSettings? GoogleSheet { get; set; }
         public ApplicationSheetSettings? ApplicationSheet { get; set; }
         public string[] DenyUserIds { get; set; } = [];
@@ -29,6 +30,7 @@ namespace DevClient.Data.Discord
             Applications = g.Applications ?? new(),
             RaiderManagement = g.RaiderManagement ?? new(),
             Droptimizer = g.Droptimizer,
+            RaidReminders = g.RaidReminders ?? new(),
             GoogleSheet = g.GoogleSheet,
             ApplicationSheet = g.ApplicationSheet == null
                 ? null
@@ -52,6 +54,7 @@ namespace DevClient.Data.Discord
             Applications = Applications ?? new(),
             RaiderManagement = RaiderManagement ?? new(),
             Droptimizer = Droptimizer,
+            RaidReminders = RaidReminders ?? new(),
             GoogleSheet = GoogleSheet,
             ApplicationSheet = ApplicationSheet == null
                 ? null

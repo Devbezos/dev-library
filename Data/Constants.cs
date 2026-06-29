@@ -7,6 +7,7 @@ namespace DevClient.Data
             public const string FitnessDaily            = "fitness_daily";
             public const string FitnessWeekly           = "fitness_weekly";
             public const string DroptimizerReminder     = "droptimizer_reminder";
+            public const string RaidReminder            = "raid_reminder";
             public const string DroptimizerSync         = "droptimizer_sync";
             public const string ServerAvailability      = "server_availability";
             public const string KeyAudit                = "key_audit";
