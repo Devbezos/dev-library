@@ -28,7 +28,7 @@ namespace DevClient.Clients
             Log.Information("WoWAuditClient.GetCharacters: START {Guild}", guild);
             try
             {
-                using var client = CreateAuthorizedClient(guild);
+                using var client = CreateAuthorizedClient(GetGuildToken(guild));
                 using var httpResponse = await client.GetAsync($"{Constants.WoW.WoWAudit.Url}/characters");
                 var response = await httpResponse.Content.ReadAsStringAsync();
                 httpResponse.EnsureSuccessStatusCode();
@@ -46,10 +46,13 @@ namespace DevClient.Clients
             }
         }
 
-        public async Task<IReadOnlyList<RaidScheduleEvent>> GetRaidSchedule(string guild)
+        public Task<IReadOnlyList<RaidScheduleEvent>> GetRaidSchedule(string guild) =>
+            GetRaidSchedule(guild, GetGuildToken(guild));
+
+        public async Task<IReadOnlyList<RaidScheduleEvent>> GetRaidSchedule(string guild, string token)
         {
             Log.Information("WoWAuditClient.GetRaidSchedule: START {Guild}", guild);
-            using var client = CreateAuthorizedClient(guild);
+            using var client = CreateAuthorizedClient(token);
             using var httpResponse = await client.GetAsync($"{Constants.WoW.WoWAudit.Url}/raids");
             var response = await httpResponse.Content.ReadAsStringAsync();
             httpResponse.EnsureSuccessStatusCode();
@@ -66,7 +69,7 @@ namespace DevClient.Clients
             Log.Information("WoWAuditClient.UpdateWishlist: START");
             try
             {
-                using var client = CreateAuthorizedClient(guild);
+                using var client = CreateAuthorizedClient(GetGuildToken(guild));
                 var requestBody = CreateJsonContent(new WoWAuditWishlistRequest(reportId));
                 using var httpResponse = await client.PostAsync($"{Constants.WoW.WoWAudit.Url}/wishlists", requestBody);
                 response = await httpResponse.Content.ReadAsStringAsync();
@@ -87,7 +90,7 @@ namespace DevClient.Clients
         public async Task<WoWAuditCharacter> TrackCharacter(string guild, WoWAuditTrackCharacterRequest request)
         {
             Log.Information("WoWAuditClient.TrackCharacter: START {Guild} {Character}", guild, request.Character.Name);
-            using var client = CreateAuthorizedClient(guild);
+            using var client = CreateAuthorizedClient(GetGuildToken(guild));
             using var response = await client.PostAsync(
                 $"{Constants.WoW.WoWAudit.Url}/characters",
                 CreateJsonContent(request));
@@ -99,7 +102,7 @@ namespace DevClient.Clients
         public async Task UpdateCharacter(string guild, int characterId, WoWAuditUpdateCharacterRequest request)
         {
             Log.Information("WoWAuditClient.UpdateCharacter: START {Guild} {CharacterId}", guild, characterId);
-            using var client = CreateAuthorizedClient(guild);
+            using var client = CreateAuthorizedClient(GetGuildToken(guild));
             using var message = new HttpRequestMessage(HttpMethod.Put, $"{Constants.WoW.WoWAudit.Url}/characters/{characterId}")
             {
                 Content = CreateJsonContent(request)
@@ -111,7 +114,7 @@ namespace DevClient.Clients
         public async Task UntrackCharacter(string guild, int characterId)
         {
             Log.Information("WoWAuditClient.UntrackCharacter: START {Guild} {CharacterId}", guild, characterId);
-            using var client = CreateAuthorizedClient(guild);
+            using var client = CreateAuthorizedClient(GetGuildToken(guild));
             using var response = await client.DeleteAsync($"{Constants.WoW.WoWAudit.Url}/characters/{characterId}");
             response.EnsureSuccessStatusCode();
         }
@@ -236,11 +239,11 @@ namespace DevClient.Clients
             return null;
         }
 
-        private HttpClient CreateAuthorizedClient(string guild)
+        private HttpClient CreateAuthorizedClient(string token)
         {
             var client = _httpClientFactory.CreateClient();
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            client.DefaultRequestHeaders.Authorization = CreateAuthorizationHeader(GetGuildToken(guild));
+            client.DefaultRequestHeaders.Authorization = CreateAuthorizationHeader(token);
             return client;
         }
 

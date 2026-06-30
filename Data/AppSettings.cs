@@ -129,6 +129,16 @@ namespace DevClient.Data
         public bool Enabled { get; set; }
         public int MinutesBefore { get; set; } = 60;
         public bool PingRoles { get; set; } = true;
+        public RaidReminderRule[] Items { get; set; } = [];
+    }
+
+    public class RaidReminderRule
+    {
+        public bool Enabled { get; set; } = true;
+        public string ChannelId { get; set; } = string.Empty;
+        public string[] RoleIds { get; set; } = [];
+        public int MinutesBefore { get; set; } = 60;
+        public bool PingRoles { get; set; } = true;
     }
 
     public class GoogleSheetsSettings
