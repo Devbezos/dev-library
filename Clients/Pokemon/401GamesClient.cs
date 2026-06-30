@@ -31,10 +31,34 @@ namespace DevClient.Clients
             _sourceUrlRepo = sourceUrlRepo;
         }
 
-        public async Task<List<Search>> GetPokemon()
+        public Task<List<Search>> GetPokemon() =>
+            GetConfiguredProducts(
+                game: "pokemon",
+                keyword: "Pokemon",
+                fallbackSourceUrls: DefaultUrls,
+                preferCollectionJson: false);
+
+        public Task<List<Search>> GetGundam() =>
+            GetConfiguredProducts(
+                game: "gundam",
+                keyword: "Gundam",
+                fallbackSourceUrls: [],
+                preferCollectionJson: true);
+
+        public Task<List<Search>> GetPokemonPreOrders() =>
+            GetConfiguredPreOrderProducts("pokemon", "Pokemon Pre-Order");
+
+        public Task<List<Search>> GetGundamPreOrders() =>
+            GetConfiguredPreOrderProducts("gundam", "Gundam Pre-Order");
+
+        private async Task<List<Search>> GetConfiguredProducts(
+            string game,
+            string keyword,
+            IReadOnlyCollection<(string Url, string Category)> fallbackSourceUrls,
+            bool preferCollectionJson)
         {
             var sourceUrls = _sourceUrlRepo?
-                .GetAll("pokemon", "401Games", enabledOnly: true)
+                .GetAll(game, "401Games", enabledOnly: true)
                 .Select(u => (u.Url, u.Category))
                 .ToList();
 
@@ -42,32 +66,22 @@ namespace DevClient.Clients
                 return [];
 
             if (sourceUrls == null || sourceUrls.Count == 0)
-                sourceUrls = DefaultUrls.ToList();
+                sourceUrls = fallbackSourceUrls.ToList();
 
-            var allProducts = await GetProductsFromSourceUrls(sourceUrls);
+            var allProducts = await GetProductsFromSourceUrls(sourceUrls, preferCollectionJson);
 
             return allProducts.Count > 0
-                ? new List<Search> { new Search("Pokemon", "401Games", allProducts) }
+                ? new List<Search> { new Search(keyword, "401Games", allProducts) }
                 : new List<Search>();
         }
 
-        public async Task<List<Search>> GetPokemonPreOrders()
+        private async Task<List<Search>> GetConfiguredPreOrderProducts(string game, string keyword)
         {
-            var sourceUrls = GetConfiguredPreOrderSourceUrls("pokemon");
+            var sourceUrls = GetConfiguredPreOrderSourceUrls(game);
             var allProducts = await GetProductsFromSourceUrls(sourceUrls, preferCollectionJson: true);
 
             return allProducts.Count > 0
-                ? new List<Search> { new Search("Pokemon Pre-Order", "401Games", allProducts) }
-                : new List<Search>();
-        }
-
-        public async Task<List<Search>> GetGundamPreOrders()
-        {
-            var sourceUrls = GetConfiguredPreOrderSourceUrls("gundam");
-            var allProducts = await GetProductsFromSourceUrls(sourceUrls, preferCollectionJson: true);
-
-            return allProducts.Count > 0
-                ? new List<Search> { new Search("Gundam Pre-Order", "401Games", allProducts) }
+                ? new List<Search> { new Search(keyword, "401Games", allProducts) }
                 : new List<Search>();
         }
 
@@ -220,8 +234,8 @@ namespace DevClient.Clients
                 return content;
 
             var gridUrls = doc.DocumentNode
-                .SelectNodes("//link[@rel='preload' and contains(@href, 'ssr-grid.fastsimon.com')]")
-                ?.Select(n => WebUtility.HtmlDecode(n.GetAttributeValue("href", "")))
+                .SelectNodes("//link[@rel='preload' and contains(@href, 'ssr-grid.fastsimon.com')]")?
+                .Select(n => WebUtility.HtmlDecode(n.GetAttributeValue("href", "")))
                 .Where(h => !string.IsNullOrWhiteSpace(h))
                 .ToList();
 
@@ -241,8 +255,8 @@ namespace DevClient.Clients
         private static bool IsInStock(HtmlNode product)
         {
             var availability = product
-                .SelectSingleNode(".//*[@itemprop='availability']")
-                ?.GetAttributeValue("content", "");
+                .SelectSingleNode(".//*[@itemprop='availability']")?
+                .GetAttributeValue("content", "");
 
             if (!string.IsNullOrWhiteSpace(availability))
                 return availability.Contains("InStock", StringComparison.OrdinalIgnoreCase);
@@ -258,9 +272,3 @@ namespace DevClient.Clients
         }
     }
 }
-
-
-
-
-
-
