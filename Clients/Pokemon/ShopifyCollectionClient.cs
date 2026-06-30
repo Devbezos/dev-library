@@ -65,24 +65,10 @@ namespace DevClient.Clients
 
         private List<(string Url, string Category)> GetSourceUrls(string game, string store)
         {
-            var configured = _sourceUrlRepo
+            return _sourceUrlRepo
                 .GetAll(game, store, enabledOnly: true)
                 .Select(u => (u.Url, string.IsNullOrWhiteSpace(u.Category) ? "Catalog" : u.Category.Trim()))
                 .ToList();
-
-            if (configured.Count > 0)
-                return configured;
-
-            return GetDefaultSourceUrls(game, store).ToList();
-        }
-
-        private static IEnumerable<(string Url, string Category)> GetDefaultSourceUrls(string game, string store)
-        {
-            if (game.Equals("gundam", StringComparison.OrdinalIgnoreCase)
-                && store.Equals("TKOToyCo", StringComparison.OrdinalIgnoreCase))
-            {
-                yield return ("https://tkotoyco.com/search?page=1&q=%2Agundam+card+game%2A", "Search");
-            }
         }
 
         private static Task<List<Product>> GetProductsFromSourceUrl(string sourceUrl)
@@ -283,3 +269,4 @@ namespace DevClient.Clients
             Regex.Replace(value ?? string.Empty, @"\s+", " ").Trim();
     }
 }
+
