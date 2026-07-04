@@ -175,15 +175,35 @@ namespace DevClient.Clients
 
         private static DateTime? ParseStartsAtUtc(JObject raid)
         {
-            foreach (var path in new[] { "startsAt", "startAt", "start", "scheduledFor", "scheduledAt", "dateTime", "startDateTime" })
+            foreach (var path in new[]
+            {
+                "startsAt", "starts_at",
+                "startAt", "start_at",
+                "start",
+                "scheduledFor", "scheduled_for",
+                "scheduledAt", "scheduled_at",
+                "dateTime", "date_time",
+                "startDateTime", "start_date_time",
+                "beginAt", "begin_at",
+                "beginsAt", "begins_at"
+            })
             {
                 var value = FirstString(raid, path);
                 if (TryParseDateTimeValue(value, out var startsAtUtc))
                     return startsAtUtc;
             }
 
-            var date = FirstString(raid, "date", "startDate");
-            var time = FirstString(raid, "startTime", "time");
+            var date = FirstString(raid, "date", "startDate", "start_date");
+            var time = FirstString(
+                raid,
+                "startTime", "start_time",
+                "time",
+                "scheduledTime", "scheduled_time",
+                "beginTime", "begin_time");
+
+            if (string.IsNullOrWhiteSpace(time))
+                time = FindTimeLikeValue(raid);
+
             return TryParseDateAndTime(date, time, out var combinedUtc)
                 ? combinedUtc
                 : null;
@@ -239,6 +259,29 @@ namespace DevClient.Clients
             return null;
         }
 
+        private static string? FindTimeLikeValue(JToken token)
+        {
+            return (token as JContainer)?.DescendantsAndSelf()
+                .OfType<JProperty>()
+                .Where(property => property.Value.Type == JTokenType.String)
+                .Select(property => new
+                {
+                    Name = property.Name,
+                    Value = property.Value.Value<string>()?.Trim()
+                })
+                .Where(item =>
+                    !string.IsNullOrWhiteSpace(item.Value) &&
+                    item.Name.Contains("time", StringComparison.OrdinalIgnoreCase) &&
+                    DateTime.TryParseExact(
+                        item.Value,
+                        new[] { "H:mm", "HH:mm", "h:mm tt", "hh:mm tt" },
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.None,
+                        out _))
+                .Select(item => item.Value)
+                .FirstOrDefault();
+        }
+
         private HttpClient CreateAuthorizedClient(string token)
         {
             var client = _httpClientFactory.CreateClient();
@@ -272,3 +315,4 @@ namespace DevClient.Clients
             new(JsonConvert.SerializeObject(payload, SerializerSettings), Encoding.UTF8, "application/json");
     }
 }
+
