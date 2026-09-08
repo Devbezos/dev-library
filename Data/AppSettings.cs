@@ -13,6 +13,7 @@ namespace DevClient.Data
         public static string ApiSettingsPath { get; set; } = string.Empty;
 
         public static MySqlSettings MySql { get; set; } = new();
+        public static ExpressVpnSettings ExpressVpn { get; set; } = new();
         public static WarcraftLogsSettings? WarcraftLogs { get; set; }
         public static GoogleSheetsCredentialsSettings GoogleSheets { get; set; } = new();
         public static GoogleHealthUserSettings[] GoogleHealth { get; set; } = Array.Empty<GoogleHealthUserSettings>();
@@ -44,6 +45,7 @@ namespace DevClient.Data
             Guilds = config.GetSection("guilds").Get<GuildSettings[]>() ?? Array.Empty<GuildSettings>();
             Soundboard = config.GetSection("soundboard").Get<SoundboardSettings>() ?? new SoundboardSettings();
             MySql = config.GetSection("mySql").Get<MySqlSettings>() ?? new MySqlSettings();
+            ExpressVpn = config.GetSection("expressVpn").Get<ExpressVpnSettings>() ?? new ExpressVpnSettings();
             WarcraftLogs = config.GetSection("warcraftLogs").Get<WarcraftLogsSettings>();
             GoogleSheets = config.GetSection("googleSheets").Get<GoogleSheetsCredentialsSettings>() ?? new GoogleSheetsCredentialsSettings();
             GoogleHealth = config.GetSection("googleHealth").Get<GoogleHealthUserSettings[]>() ?? Array.Empty<GoogleHealthUserSettings>();
@@ -82,6 +84,7 @@ namespace DevClient.Data
         public ApplicationReviewSettings Applications { get; set; } = new();
         public RaiderManagementSettings RaiderManagement { get; set; } = new();
         public DroptimizerSettings? Droptimizer { get; set; }
+        public RosterSyncSettings? RosterSync { get; set; }
         public RaidReminderSettings RaidReminders { get; set; } = new();
         public GoogleSheetsSettings? GoogleSheet { get; set; }
         public ApplicationSheetSettings? ApplicationSheet { get; set; }
@@ -122,6 +125,17 @@ namespace DevClient.Data
 
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }
+    }
+
+    // Independent of DroptimizerSettings: lets a guild keep both a WoWAudit token
+    // and WoWUtils roster access configured at once, purely to drive the hourly
+    // roster sync job (see Constants.Jobs.WoWUtilsRosterSync).
+    public class RosterSyncSettings
+    {
+        public bool Enabled { get; set; }
+        public string? WoWAuditToken { get; set; }
+        public string? WoWUtilsGroupId { get; set; }
+        public string? WoWUtilsApiKey { get; set; }
     }
 
     public class RaidReminderSettings
@@ -186,6 +200,16 @@ namespace DevClient.Data
     public class MySqlSettings
     {
         public string ConnectionString { get; set; } = "Server=localhost;Port=3306;Database=dev_bot;Uid=root;Pwd=;";
+    }
+
+    public class ExpressVpnSettings
+    {
+        public bool Enabled { get; set; }
+        public string ProxyServer { get; set; } = string.Empty;
+        public string ProxyBypass { get; set; } = string.Empty;
+        public string Username { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public bool BypassProxyOnLocal { get; set; } = true;
     }
 
     public class WarcraftLogsSettings

@@ -23,12 +23,15 @@ namespace DevClient.Clients
 
         public WoWAuditClient(IHttpClientFactory httpClientFactory) => _httpClientFactory = httpClientFactory;
 
-        public async Task<List<WoWAuditCharacter>> GetCharacters(string guild)
+        public Task<List<WoWAuditCharacter>> GetCharacters(string guild) =>
+            GetCharacters(guild, GetGuildToken(guild));
+
+        public async Task<List<WoWAuditCharacter>> GetCharacters(string guild, string token)
         {
             Log.Information("WoWAuditClient.GetCharacters: START {Guild}", guild);
             try
             {
-                using var client = CreateAuthorizedClient(GetGuildToken(guild));
+                using var client = CreateAuthorizedClient(token);
                 using var httpResponse = await client.GetAsync($"{Constants.WoW.WoWAudit.Url}/characters");
                 var response = await httpResponse.Content.ReadAsStringAsync();
                 httpResponse.EnsureSuccessStatusCode();
@@ -87,10 +90,13 @@ namespace DevClient.Clients
             }
         }
 
-        public async Task<WoWAuditCharacter> TrackCharacter(string guild, WoWAuditTrackCharacterRequest request)
+        public Task<WoWAuditCharacter> TrackCharacter(string guild, WoWAuditTrackCharacterRequest request) =>
+            TrackCharacter(guild, GetGuildToken(guild), request);
+
+        public async Task<WoWAuditCharacter> TrackCharacter(string guild, string token, WoWAuditTrackCharacterRequest request)
         {
             Log.Information("WoWAuditClient.TrackCharacter: START {Guild} {Character}", guild, request.Character.Name);
-            using var client = CreateAuthorizedClient(GetGuildToken(guild));
+            using var client = CreateAuthorizedClient(token);
             using var response = await client.PostAsync(
                 $"{Constants.WoW.WoWAudit.Url}/characters",
                 CreateJsonContent(request));

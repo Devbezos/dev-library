@@ -6,10 +6,12 @@ namespace DevClient.Clients
     public interface IWoWAuditClient
     {
         Task<List<WoWAuditCharacter>> GetCharacters(string guild);
+        Task<List<WoWAuditCharacter>> GetCharacters(string guild, string token);
         Task<IReadOnlyList<RaidScheduleEvent>> GetRaidSchedule(string guild);
         Task<IReadOnlyList<RaidScheduleEvent>> GetRaidSchedule(string guild, string token);
         Task<WoWAuditWishlistResponse> UpdateWishlist(string reportId, string guild);
         Task<WoWAuditCharacter> TrackCharacter(string guild, WoWAuditTrackCharacterRequest request);
+        Task<WoWAuditCharacter> TrackCharacter(string guild, string token, WoWAuditTrackCharacterRequest request);
         Task UpdateCharacter(string guild, int characterId, WoWAuditUpdateCharacterRequest request);
         Task UntrackCharacter(string guild, int characterId);
     }
