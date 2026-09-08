@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Configuration;
+using System.Text.Json.Serialization;
 
 namespace DevClient.Data
 {
@@ -133,8 +134,18 @@ namespace DevClient.Data
     public class RosterSyncSettings
     {
         public bool Enabled { get; set; }
+
+        // Explicit JsonPropertyName: System.Text.Json's default camelCase policy only
+        // lowercases a single leading capital, so "WoWAuditToken" would otherwise
+        // serialize as "woWAuditToken" instead of the "wowAuditToken" the dev-ui
+        // types expect.
+        [JsonPropertyName("wowAuditToken")]
         public string? WoWAuditToken { get; set; }
+
+        [JsonPropertyName("wowUtilsGroupId")]
         public string? WoWUtilsGroupId { get; set; }
+
+        [JsonPropertyName("wowUtilsApiKey")]
         public string? WoWUtilsApiKey { get; set; }
     }
 
