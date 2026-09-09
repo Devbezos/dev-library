@@ -31,8 +31,9 @@ namespace DevClient.Data.WoW
         [JsonProperty("note")]
         public string Note { get; set; } = string.Empty;
 
+        // "region-realmId-characterId" composite (e.g. "1566-245821793"), not a plain integer.
         [JsonProperty("blizzard_id")]
-        public int BlizzardId { get; set; }
+        public string BlizzardId { get; set; } = string.Empty;
 
         [JsonProperty("tracking_since")]
         public DateTime TrackingSince { get; set; }
