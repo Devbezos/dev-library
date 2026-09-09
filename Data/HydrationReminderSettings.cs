@@ -4,6 +4,7 @@ namespace DevClient.Data;
 // Start/EndMinuteOfDay are minutes since midnight (e.g. 9:00 AM = 540), local time.
 public sealed record HydrationReminderSchedule(
     ulong DiscordUserId,
+    string[] Messages,
     bool Enabled,
     bool[] Days,
     int StartMinuteOfDay,
@@ -15,6 +16,7 @@ public interface IHydrationReminderSettingsRepository
 {
     void EnsureTable();
     HydrationReminderSchedule Get();
-    void Update(ulong discordUserId, bool enabled, bool[] days, int startMinuteOfDay, int endMinuteOfDay, int intervalMinutes);
+    void UpdateRecipient(ulong discordUserId, string[] messages);
+    void UpdateSchedule(bool enabled, bool[] days, int startMinuteOfDay, int endMinuteOfDay, int intervalMinutes);
     void MarkSent(DateTime sentAtUtc);
 }
