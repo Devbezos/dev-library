@@ -63,7 +63,7 @@ namespace DevClient.Clients
 
             Log.Information("WoWUtilsClient.GetRosterMembers: START {GroupId}", groupId);
             using var client = BuildHttpClient(apiKey);
-            using var response = await client.GetAsync($"{Constants.WoW.WoWUtils.BaseUrl}/v1/groups/{groupId}/roster/members");
+            using var response = await client.GetAsync($"{Constants.WoW.WoWUtils.BaseUrl}/v1/groups/{groupId}/roster");
             var responseJson = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
@@ -227,26 +227,77 @@ namespace DevClient.Clients
                     $"WoW Utils character tracking failed for {characterId} ({(int)response.StatusCode}): {responseBody}");
         }
 
+        // GET /v1/groups/{groupId}/roster returns one entry per *person* (a raider),
+        // each carrying that person's rank/mainRole plus a `characters` array (their
+        // main + alts). We flatten that into one WoWUtilsRosterMember per non-inactive
+        // character, since WoW Audit tracks characters, not people.
         private static IReadOnlyList<WoWUtilsRosterMember> ParseRosterMembers(string responseJson)
         {
             if (string.IsNullOrWhiteSpace(responseJson))
                 return [];
 
-            var token = JToken.Parse(responseJson);
-            var array = FindRosterArray(token);
-            if (array == null)
+            var root = JToken.Parse(responseJson) as JObject;
+            var people = root?["members"] as JArray;
+            if (people == null)
                 return [];
 
-            return array
-                .OfType<JToken>()
-                .Select(ParseRosterMember)
-                .Where(member => member != null)
-                .Select(member => member!)
+            return people
+                .OfType<JObject>()
+                .SelectMany(ParseRosterPersonCharacters)
                 .Where(member => !string.IsNullOrWhiteSpace(member.Name) && !string.IsNullOrWhiteSpace(member.Realm))
                 .GroupBy(member => $"{member.Name}|{member.Realm}", StringComparer.OrdinalIgnoreCase)
                 .Select(group => group.First())
                 .ToList();
         }
+
+        private static IEnumerable<WoWUtilsRosterMember> ParseRosterPersonCharacters(JObject person)
+        {
+            // person["rank"] is the person's *guild* rank (GM/Officer/Raider) - not the
+            // Main/Alt designation WoW Audit's character Rank field expects. That comes
+            // from each character's own "status" (main/alt/inactive) instead.
+            var mainRole = person["mainRole"]?.Value<string>();
+            var characters = person["characters"] as JArray ?? [];
+
+            foreach (var characterToken in characters.OfType<JObject>())
+            {
+                var status = characterToken["status"]?.Value<string>();
+                if (IsInactiveRosterCharacter(characterToken, status))
+                    continue;
+
+                var name = characterToken["name"]?.Value<string>()?.Trim();
+                var realm = characterToken["realm"]?.Value<string>()?.Trim();
+                if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(realm))
+                    continue;
+
+                yield return new WoWUtilsRosterMember
+                {
+                    CharacterId = characterToken["playerId"]?.Value<string>()?.Trim() ?? BuildCharacterSlug(name, realm),
+                    Name = name,
+                    Realm = realm,
+                    Class = characterToken["class"]?.Value<string>(),
+                    Spec = characterToken["spec"]?.Value<string>(),
+                    Role = mainRole,
+                    Rank = NormalizeRosterCharacterRank(status)
+                };
+            }
+        }
+
+        private static bool IsInactiveRosterCharacter(JObject character, string? status)
+        {
+            var inactive = character["inactive"];
+            if (inactive?.Type == JTokenType.Boolean)
+                return inactive.Value<bool>();
+
+            return string.Equals(status, "inactive", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string? NormalizeRosterCharacterRank(string? status) =>
+            status?.Trim().ToLowerInvariant() switch
+            {
+                "main" => "Main",
+                "alt" => "Alt",
+                _ => null
+            };
 
         private static IReadOnlyList<RaidScheduleEvent> ParseRaidSchedule(string responseJson)
         {
@@ -267,25 +318,6 @@ namespace DevClient.Clients
                 .ToList();
         }
 
-        private static JArray? FindRosterArray(JToken token)
-        {
-            if (token is JArray directArray && LooksLikeRosterArray(directArray))
-                return directArray;
-
-            foreach (var path in new[] { "data", "members", "roster.members", "roster", "items" })
-            {
-                if (token.SelectToken(path) is JArray namedArray && LooksLikeRosterArray(namedArray, allowEmpty: true))
-                    return namedArray;
-            }
-
-            foreach (var property in token is JContainer container ? container.DescendantsAndSelf().OfType<JProperty>() : Enumerable.Empty<JProperty>())
-            {
-                if (property.Value is JArray array && LooksLikeRosterArray(array))
-                    return array;
-            }
-
-            return null;
-        }
         private static JArray? FindRaidArray(JToken token)
         {
             if (token is JArray directArray)
@@ -343,66 +375,6 @@ namespace DevClient.Clients
             return true;
         }
 
-        private static bool LooksLikeRosterArray(JArray array, bool allowEmpty = false)
-        {
-            if (array.Count == 0)
-                return allowEmpty;
-
-            return array.OfType<JObject>().Any(item =>
-                HasAnyValue(item, "characterId", "character_id", "slug", "name", "character.name", "realm", "character.realm"));
-        }
-
-        private static WoWUtilsRosterMember? ParseRosterMember(JToken token)
-        {
-            if (token is not JObject item)
-                return null;
-
-            var characterId = FirstString(item,
-                "characterId",
-                "character_id",
-                "slug",
-                "character.slug",
-                "character.characterId",
-                "character.id");
-
-            var name = FirstString(item,
-                "name",
-                "characterName",
-                "character.name",
-                "character.characterName");
-
-            var realm = FirstString(item,
-                "realm",
-                "realmSlug",
-                "characterRealm",
-                "character.realm",
-                "character.realmSlug");
-
-            if ((string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(realm)) && !string.IsNullOrWhiteSpace(characterId))
-            {
-                var parsed = TryParseCharacterSlug(characterId);
-                name ??= parsed.Name;
-                realm ??= parsed.Realm;
-            }
-
-            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(realm))
-                return null;
-
-            return new WoWUtilsRosterMember
-            {
-                CharacterId = characterId ?? BuildCharacterSlug(name, realm),
-                Name = name,
-                Realm = realm,
-                Class = FirstString(item, "class", "characterClass", "character.class"),
-                Spec = FirstString(item, "spec", "characterSpec", "activeSpec", "character.spec"),
-                Role = FirstString(item, "role", "characterRole", "character.role"),
-                Rank = FirstString(item, "rank", "groupRank", "character.rank")
-            };
-        }
-
-        private static bool HasAnyValue(JObject item, params string[] paths) =>
-            paths.Any(path => !string.IsNullOrWhiteSpace(FirstString(item, path)));
-
         private static string? FirstString(JToken token, params string[] paths)
         {
             foreach (var path in paths)
@@ -413,20 +385,6 @@ namespace DevClient.Clients
             }
 
             return null;
-        }
-
-        private static (string? Name, string? Realm) TryParseCharacterSlug(string? characterId)
-        {
-            if (string.IsNullOrWhiteSpace(characterId))
-                return (null, null);
-
-            var separatorIndex = characterId.IndexOf('-');
-            if (separatorIndex <= 0 || separatorIndex >= characterId.Length - 1)
-                return (null, null);
-
-            return (
-                characterId[..separatorIndex].Trim(),
-                characterId[(separatorIndex + 1)..].Trim());
         }
 
         private static string BuildCharacterSlug(string name, string realm) =>
