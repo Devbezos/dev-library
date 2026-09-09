@@ -18,7 +18,6 @@ namespace DevClient.Data
             public const string GundamPreorderTcg       = "gundam_preorder_tcg";
             public const string PokemonCenterSecurity   = "pokemon_center_security";
             public const string WoWUtilsRosterSync      = "wow_utils_roster_sync";
-            public const string HydrationReminder       = "hydration_reminder";
         }
 
         public static class GoogleHealth
