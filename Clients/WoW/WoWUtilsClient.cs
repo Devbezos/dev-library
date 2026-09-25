@@ -168,6 +168,11 @@ namespace DevClient.Clients
             return $"{name.ToLower()}-{realm.ToLower()}";
         }
 
+        // Deliberately does NOT use GetDroptimizerReport/WoW Utils' own report cache: that
+        // cache is only populated by a *successful* import, but this recovery path only
+        // ever runs after an import fails because the character isn't on the roster yet -
+        // so the cache entry can never exist for the case this method exists to handle.
+        // Fetch the character's identity straight from Raidbots instead.
         private async Task<string?> TryTrackCharacterForImport(string groupId, string reportUrlOrId, string apiKey)
         {
             var reportId = ExtractReportId(reportUrlOrId);
@@ -177,30 +182,41 @@ namespace DevClient.Clients
                 return null;
             }
 
-            WoWUtilsFetchResponse report;
-            try
+            var identity = await FetchRaidbotsCharacterIdentity(reportId);
+            if (identity == null)
             {
-                report = await GetDroptimizerReport(reportId);
-            }
-            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
-            {
-                Log.Warning("WoWUtilsClient.ImportDroptimizer: report fetch returned 404 for {ReportId}; cannot auto-add roster member", reportId);
+                Log.Warning("WoWUtilsClient.ImportDroptimizer: could not determine character identity from Raidbots input for {ReportId}; cannot auto-add roster member", reportId);
                 return null;
             }
 
-            string characterId;
-            try
-            {
-                characterId = GetCharacterSlug(report);
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex, "WoWUtilsClient.ImportDroptimizer: could not determine character identity for report {ReportId}", reportId);
-                return null;
-            }
-
+            var characterId = BuildCharacterSlug(identity.Value.Name, identity.Value.Realm);
             await TrackWoWUtilsCharacter(groupId, apiKey, characterId);
             return characterId;
+        }
+
+        private async Task<(string Name, string Realm)?> FetchRaidbotsCharacterIdentity(string reportId)
+        {
+            using var client = BuildHttpClient();
+            using var response = await client.GetAsync($"https://www.raidbots.com/simbot/report/{reportId}/input.txt");
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            var simcText = await response.Content.ReadAsStringAsync();
+            if (string.IsNullOrWhiteSpace(simcText))
+                return null;
+
+            // "Import from armory" reports carry no simc class/server lines at all - just
+            // armory=<region>,<realm-slug>,<name> - so that has to be checked separately
+            // from the full simc-addon-export format ParseSimcCharacter/ParseRealm handle.
+            var armoryMatch = Regex.Match(simcText, @"^armory=[^,]+,([^,]+),(.+)$", RegexOptions.Multiline | RegexOptions.IgnoreCase);
+            if (armoryMatch.Success)
+                return (armoryMatch.Groups[2].Value.Trim(), armoryMatch.Groups[1].Value.Trim());
+
+            var (name, realm, _, _) = ParseSimcCharacter(simcText);
+            realm ??= ParseRealm(simcText);
+            return !string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(realm)
+                ? (name, realm)
+                : null;
         }
 
         private async Task TrackWoWUtilsCharacter(string groupId, string apiKey, string characterId)
