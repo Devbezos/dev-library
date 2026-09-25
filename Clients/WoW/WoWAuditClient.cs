@@ -101,7 +101,13 @@ namespace DevClient.Clients
                 $"{Constants.WoW.WoWAudit.Url}/characters",
                 CreateJsonContent(request));
             var responseBody = await response.Content.ReadAsStringAsync();
-            response.EnsureSuccessStatusCode();
+
+            if (!response.IsSuccessStatusCode)
+                throw new HttpRequestException(
+                    $"WoW Audit character tracking failed ({(int)response.StatusCode}): {responseBody}",
+                    null,
+                    response.StatusCode);
+
             return JsonConvert.DeserializeObject<WoWAuditCharacter>(responseBody) ?? new WoWAuditCharacter();
         }
 
