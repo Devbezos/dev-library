@@ -44,6 +44,9 @@ namespace DevClient.Data
             public static class WoWUtils
             {
                 public const string BaseUrl = "https://api.wowutils.com";
+
+                // Import warnings containing any of these (case-insensitive) are not DMed to the author.
+                public static readonly string[] IgnoredWarnings = ["Match Droptimizer Item Levels"];
             }
 
             public static class BattleNet
