@@ -123,12 +123,23 @@ namespace DevClient.Clients
             response.EnsureSuccessStatusCode();
         }
 
-        public async Task UntrackCharacter(string guild, int characterId)
+        public Task UntrackCharacter(string guild, int characterId) =>
+            UntrackCharacter(guild, GetGuildToken(guild), characterId);
+
+        public async Task UntrackCharacter(string guild, string token, int characterId)
         {
             Log.Information("WoWAuditClient.UntrackCharacter: START {Guild} {CharacterId}", guild, characterId);
-            using var client = CreateAuthorizedClient(GetGuildToken(guild));
+            using var client = CreateAuthorizedClient(token);
             using var response = await client.DeleteAsync($"{Constants.WoW.WoWAudit.Url}/characters/{characterId}");
-            response.EnsureSuccessStatusCode();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var responseBody = await response.Content.ReadAsStringAsync();
+                throw new HttpRequestException(
+                    $"WoW Audit character untracking failed ({(int)response.StatusCode}): {responseBody}",
+                    null,
+                    response.StatusCode);
+            }
         }
 
         private static IReadOnlyList<RaidScheduleEvent> ParseRaidSchedule(string response)

@@ -14,5 +14,6 @@ namespace DevClient.Clients
         Task<WoWAuditCharacter> TrackCharacter(string guild, string token, WoWAuditTrackCharacterRequest request);
         Task UpdateCharacter(string guild, int characterId, WoWAuditUpdateCharacterRequest request);
         Task UntrackCharacter(string guild, int characterId);
+        Task UntrackCharacter(string guild, string token, int characterId);
     }
 }
