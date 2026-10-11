@@ -79,6 +79,8 @@ namespace DevClient.Data
     public class GuildSettings
     {
         public string Name { get; set; } = string.Empty;
+        public string Realm { get; set; } = string.Empty;
+        public string Region { get; set; } = "us";
         public Dictionary<string, ulong> Channels { get; set; } = new();
         public string[] RolesToPing { get; set; } = [];
         public GuildFeatures Features { get; set; } = new();

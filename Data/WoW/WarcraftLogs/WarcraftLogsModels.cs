@@ -56,6 +56,121 @@ namespace DevClient.Data.WoW.WarcraftLogs
         public string Url { get; set; } = string.Empty;
         public List<(string ZoneName, WarcraftLogsZoneRankings Rankings)> ZoneRankings { get; set; } = new();
     }
+
+    /// <summary>Raised when the Warcraft Logs GraphQL API returns an errors array (e.g. unknown guild or report).</summary>
+    public class WarcraftLogsApiException : Exception
+    {
+        public WarcraftLogsApiException(string message) : base(message) { }
+    }
+
+    public class WarcraftLogsReportPage
+    {
+        [JsonProperty("total")]
+        public int Total { get; set; }
+
+        [JsonProperty("per_page")]
+        public int PerPage { get; set; }
+
+        [JsonProperty("current_page")]
+        public int CurrentPage { get; set; }
+
+        [JsonProperty("last_page")]
+        public int LastPage { get; set; }
+
+        [JsonProperty("has_more_pages")]
+        public bool HasMorePages { get; set; }
+
+        [JsonProperty("data")]
+        public List<WarcraftLogsReportSummary> Data { get; set; } = new();
+    }
+
+    public class WarcraftLogsReportSummary
+    {
+        [JsonProperty("code")]
+        public string Code { get; set; } = string.Empty;
+
+        [JsonProperty("title")]
+        public string Title { get; set; } = string.Empty;
+
+        /// <summary>UNIX timestamp in milliseconds.</summary>
+        [JsonProperty("startTime")]
+        public double StartTime { get; set; }
+
+        /// <summary>UNIX timestamp in milliseconds.</summary>
+        [JsonProperty("endTime")]
+        public double EndTime { get; set; }
+
+        [JsonProperty("zone")]
+        public WarcraftLogsReportZone? Zone { get; set; }
+
+        [JsonProperty("owner")]
+        public WarcraftLogsReportOwner? Owner { get; set; }
+    }
+
+    public class WarcraftLogsReportZone
+    {
+        [JsonProperty("id")]
+        public int Id { get; set; }
+
+        [JsonProperty("name")]
+        public string Name { get; set; } = string.Empty;
+    }
+
+    public class WarcraftLogsReportOwner
+    {
+        [JsonProperty("name")]
+        public string Name { get; set; } = string.Empty;
+    }
+
+    public class WarcraftLogsReport : WarcraftLogsReportSummary
+    {
+        [JsonProperty("fights")]
+        public List<WarcraftLogsFight> Fights { get; set; } = new();
+    }
+
+    public class WarcraftLogsFight
+    {
+        [JsonProperty("id")]
+        public int Id { get; set; }
+
+        [JsonProperty("encounterID")]
+        public int EncounterId { get; set; }
+
+        [JsonProperty("name")]
+        public string Name { get; set; } = string.Empty;
+
+        [JsonProperty("kill")]
+        public bool? Kill { get; set; }
+
+        [JsonProperty("difficulty")]
+        public int? Difficulty { get; set; }
+
+        [JsonProperty("size")]
+        public int? Size { get; set; }
+
+        /// <summary>Milliseconds relative to the report start.</summary>
+        [JsonProperty("startTime")]
+        public double StartTime { get; set; }
+
+        /// <summary>Milliseconds relative to the report start.</summary>
+        [JsonProperty("endTime")]
+        public double EndTime { get; set; }
+
+        [JsonProperty("bossPercentage")]
+        public double? BossPercentage { get; set; }
+
+        [JsonProperty("fightPercentage")]
+        public double? FightPercentage { get; set; }
+
+        [JsonProperty("lastPhase")]
+        public int? LastPhase { get; set; }
+
+        [JsonProperty("lastPhaseIsIntermission")]
+        public bool? LastPhaseIsIntermission { get; set; }
+
+        [JsonProperty("averageItemLevel")]
+        public double? AverageItemLevel { get; set; }
+    }
 }
 
 

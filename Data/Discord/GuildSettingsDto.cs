@@ -8,6 +8,8 @@ namespace DevClient.Data.Discord
     {
         public string Name { get; set; } = string.Empty;
         public string Nickname { get; set; } = string.Empty;
+        public string Realm { get; set; } = string.Empty;
+        public string Region { get; set; } = "us";
         public Dictionary<string, string> Channels { get; set; } = new();
         public string[] RolesToPing { get; set; } = [];
         public GuildFeatures Features { get; set; } = new();
@@ -25,6 +27,8 @@ namespace DevClient.Data.Discord
         {
             Name     = g.Name ?? string.Empty,
             Nickname = string.Empty,
+            Realm    = g.Realm ?? string.Empty,
+            Region   = string.IsNullOrWhiteSpace(g.Region) ? "us" : g.Region,
             Channels = g.Channels?.ToDictionary(k => k.Key, v => v.Value.ToString()) ?? new(),
             RolesToPing = g.RolesToPing ?? [],
             Features = g.Features ?? new(),
@@ -50,6 +54,8 @@ namespace DevClient.Data.Discord
         public GuildSettings ToGuildSettings() => new()
         {
             Name = Name,
+            Realm = Realm,
+            Region = Region,
             Channels = Channels.ToDictionary(k => k.Key, v => ulong.TryParse(v.Value, out var id) ? id : 0UL),
             RolesToPing = RolesToPing,
             Features = Features,

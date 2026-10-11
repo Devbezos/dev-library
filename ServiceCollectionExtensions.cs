@@ -1,4 +1,6 @@
 using DevClient.Clients;
+using DevClient.Data;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using System.Net.Security;
 using System.Security.Authentication;
@@ -28,6 +30,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<RealmClient>();
         services.AddSingleton<RefinedClient>();
         services.AddSingleton<IEbayClient, EbayClient>();
+        services.AddSingleton<IWarcraftLogsClient>(sp => new WarcraftLogsClient(
+            sp.GetService<IConfiguration>()?.GetSection("warcraftLogs").Get<WarcraftLogsSettings>()));
         return services;
     }
 }
