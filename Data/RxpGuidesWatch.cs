@@ -22,4 +22,6 @@ public interface IRxpGuidesWatchRepository
     void UpdateSettings(string threadUrl, ulong channelId);
     void RecordChanged(string f2hUrl, string fileName, string sha256, long sizeBytes, string? postText, DateTime checkedAtUtc);
     void RecordChecked(DateTime checkedAtUtc, string? error);
+    // Forgets the last posted file (keeping the f2h link as a fallback) so the next check posts it again.
+    void ResetLastSeen();
 }
