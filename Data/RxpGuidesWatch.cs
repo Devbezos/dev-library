@@ -2,7 +2,8 @@ namespace DevClient.Data;
 
 // Single-row settings + last-seen state for the RXPGuides watcher: the bot reads the first
 // post of ThreadUrl, follows its f2h.io link, hashes the archive and posts to ChannelId when
-// the hash differs from Sha256.
+// the hash differs from Sha256. PinnedChannelId/PinnedMessageId track the bot's currently
+// pinned update post so it can be unpinned when the next one goes up.
 public sealed record RxpGuidesWatch(
     string ThreadUrl,
     ulong ChannelId,
@@ -13,7 +14,9 @@ public sealed record RxpGuidesWatch(
     string? PostText,
     DateTime? LastCheckedAtUtc,
     DateTime? LastChangedAtUtc,
-    string? LastError);
+    string? LastError,
+    ulong PinnedChannelId = 0,
+    ulong PinnedMessageId = 0);
 
 public interface IRxpGuidesWatchRepository
 {
@@ -24,4 +27,6 @@ public interface IRxpGuidesWatchRepository
     void RecordChecked(DateTime checkedAtUtc, string? error);
     // Forgets the last posted file (keeping the f2h link as a fallback) so the next check posts it again.
     void ResetLastSeen();
+    // Pass 0/0 to clear.
+    void RecordPinned(ulong channelId, ulong messageId);
 }

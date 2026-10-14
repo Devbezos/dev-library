@@ -24,11 +24,12 @@ namespace DevClient.Clients
         public static Func<ulong, Task<ulong[]>>? GetTrackedTcgMessageIdsAsync { get; set; }
         public static Func<ulong, ulong[], Task>? SaveTrackedTcgMessageIdsAsync { get; set; }
         public static Func<ulong, Embed, Task>? SendEmbedAsync { get; set; }
-        public static Func<ulong, string, string, Task>? SendFileAsync { get; set; }
+        public static Func<ulong, string, string, Task<ulong>>? SendFileAsync { get; set; }
         public static Func<ulong, string, Task>? SendDirectMessageToUserAsync { get; set; }
         public static Func<ulong, string, Task<ulong>>? CreateApplicationChannelAsync { get; set; }
         public static Func<ulong, Embed, Task<ulong>>? SendEmbedWithIdAsync { get; set; }
         public static Func<ulong, ulong, Task>? PinMessageAsync { get; set; }
+        public static Func<ulong, ulong, Task>? UnpinMessageAsync { get; set; }
         private static readonly ConcurrentDictionary<ulong, ulong[]> _tcgMessageIdsByChannel = new();
 
         public async Task PostToChannel(ulong channelId, string message)
@@ -44,17 +45,36 @@ namespace DevClient.Clients
         }
 
         // Unlike PostToChannel, failures (including the file exceeding the server's upload
-        // limit) propagate so callers can record them and retry later.
-        public async Task PostFileToChannel(ulong channelId, string message, string filePath)
+        // limit) propagate so callers can record them and retry later. Returns the message ID
+        // (0 in dry run).
+        public async Task<ulong> PostFileToChannel(ulong channelId, string message, string filePath)
         {
             Logger.Information("PostFileToChannel: START");
 
             if (SendFileAsync == null)
                 throw new InvalidOperationException("PostFileToChannel: SendFileAsync is not wired up");
 
-            await SendFileAsync(channelId, message, filePath);
+            var messageId = await SendFileAsync(channelId, message, filePath);
 
             Logger.Information("PostFileToChannel: END");
+            return messageId;
+        }
+
+        // Pin/unpin failures (missing permission, deleted message) propagate to the caller.
+        public async Task PinMessage(ulong channelId, ulong messageId)
+        {
+            if (PinMessageAsync == null)
+                throw new InvalidOperationException("PinMessage: PinMessageAsync is not wired up");
+
+            await PinMessageAsync(channelId, messageId);
+        }
+
+        public async Task UnpinMessage(ulong channelId, ulong messageId)
+        {
+            if (UnpinMessageAsync == null)
+                throw new InvalidOperationException("UnpinMessage: UnpinMessageAsync is not wired up");
+
+            await UnpinMessageAsync(channelId, messageId);
         }
 
         public async Task PostEmbed(ulong channelId, Embed embed)

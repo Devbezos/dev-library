@@ -8,7 +8,9 @@ namespace DevClient.Clients
     public interface IDiscordClient
     {
         Task PostToChannel(ulong channelId, string message);
-        Task PostFileToChannel(ulong channelId, string message, string filePath);
+        Task<ulong> PostFileToChannel(ulong channelId, string message, string filePath);
+        Task PinMessage(ulong channelId, ulong messageId);
+        Task UnpinMessage(ulong channelId, ulong messageId);
         Task PostEmbed(ulong channelId, Embed embed);
         Task<(ulong channelId, string channelName, ulong[] messageIds)> PostApplication(ulong channelId, ulong officerChannelId, GuildApplication app);
         Task<List<TrackedApplication>> CheckNewApplications(GoogleSheetsClient sheetsClient);
