@@ -7,7 +7,7 @@ namespace DevClient.Clients;
 
 public sealed record RxpGuidesPost(string Text, string[] Links, string LastEdited, string? F2hUrl);
 
-public sealed record RxpGuidesArchive(string FileName, string Sha256, long SizeBytes);
+public sealed record RxpGuidesArchive(string FileName, string Sha256, long SizeBytes, string FilePath);
 
 public sealed record F2hDownloadForm(string Action, int WaitSeconds);
 
@@ -83,7 +83,8 @@ public sealed class RxpGuidesClient
         throw new InvalidOperationException($"Could not read the first post (page title \"{title}\"): {lastError?.Message}", lastError);
     }
 
-    public async Task<RxpGuidesArchive> DownloadArchive(string f2hUrl, CancellationToken cancellationToken = default)
+    // Saves the archive into destinationDirectory (the caller owns and cleans it up).
+    public async Task<RxpGuidesArchive> DownloadArchive(string f2hUrl, string destinationDirectory, CancellationToken cancellationToken = default)
     {
         using var handler = new HttpClientHandler
         {
@@ -117,24 +118,34 @@ public sealed class RxpGuidesClient
         fileResponse.EnsureSuccessStatusCode();
 
         var disposition = fileResponse.Content.Headers.ContentDisposition;
-        var fileName = (disposition?.FileNameStar ?? disposition?.FileName ?? Path.GetFileName(new Uri(directUrl).LocalPath)).Trim('"');
+        // GetFileName strips any directory parts so a hostile Content-Disposition can't escape destinationDirectory.
+        var fileName = Path.GetFileName((disposition?.FileNameStar ?? disposition?.FileName ?? new Uri(directUrl).LocalPath).Trim('"'));
+        if (string.IsNullOrWhiteSpace(fileName))
+            fileName = "RXPGuides.rar";
+
+        Directory.CreateDirectory(destinationDirectory);
+        var filePath = Path.Combine(destinationDirectory, fileName);
 
         using var sha = SHA256.Create();
-        await using var stream = await fileResponse.Content.ReadAsStreamAsync(cancellationToken);
-        var buffer = new byte[81920];
         long size = 0;
-        int read;
-        while ((read = await stream.ReadAsync(buffer, cancellationToken)) > 0)
+        await using (var stream = await fileResponse.Content.ReadAsStreamAsync(cancellationToken))
+        await using (var file = File.Create(filePath))
         {
-            sha.TransformBlock(buffer, 0, read, null, 0);
-            size += read;
+            var buffer = new byte[81920];
+            int read;
+            while ((read = await stream.ReadAsync(buffer, cancellationToken)) > 0)
+            {
+                sha.TransformBlock(buffer, 0, read, null, 0);
+                await file.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+                size += read;
+            }
         }
         sha.TransformFinalBlock([], 0, 0);
 
         if (size == 0)
             throw new InvalidOperationException($"f2h returned an empty file for {f2hUrl}");
 
-        return new RxpGuidesArchive(fileName, Convert.ToHexString(sha.Hash!).ToLowerInvariant(), size);
+        return new RxpGuidesArchive(fileName, Convert.ToHexString(sha.Hash!).ToLowerInvariant(), size, filePath);
     }
 
     public static string? FindF2hLink(IEnumerable<string> links, string postText)

@@ -24,6 +24,7 @@ namespace DevClient.Clients
         public static Func<ulong, Task<ulong[]>>? GetTrackedTcgMessageIdsAsync { get; set; }
         public static Func<ulong, ulong[], Task>? SaveTrackedTcgMessageIdsAsync { get; set; }
         public static Func<ulong, Embed, Task>? SendEmbedAsync { get; set; }
+        public static Func<ulong, string, string, Task>? SendFileAsync { get; set; }
         public static Func<ulong, string, Task>? SendDirectMessageToUserAsync { get; set; }
         public static Func<ulong, string, Task<ulong>>? CreateApplicationChannelAsync { get; set; }
         public static Func<ulong, Embed, Task<ulong>>? SendEmbedWithIdAsync { get; set; }
@@ -40,6 +41,20 @@ namespace DevClient.Clients
                 Logger.Warning("PostToChannel: SendMessageAsync not wired up. Message: {Message}", message);
 
             Logger.Information("PostToChannel: END");
+        }
+
+        // Unlike PostToChannel, failures (including the file exceeding the server's upload
+        // limit) propagate so callers can record them and retry later.
+        public async Task PostFileToChannel(ulong channelId, string message, string filePath)
+        {
+            Logger.Information("PostFileToChannel: START");
+
+            if (SendFileAsync == null)
+                throw new InvalidOperationException("PostFileToChannel: SendFileAsync is not wired up");
+
+            await SendFileAsync(channelId, message, filePath);
+
+            Logger.Information("PostFileToChannel: END");
         }
 
         public async Task PostEmbed(ulong channelId, Embed embed)
