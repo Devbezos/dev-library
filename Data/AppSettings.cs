@@ -19,6 +19,7 @@ namespace DevClient.Data
         public static GoogleSheetsCredentialsSettings GoogleSheets { get; set; } = new();
         public static GoogleHealthUserSettings[] GoogleHealth { get; set; } = Array.Empty<GoogleHealthUserSettings>();
         public static FitnessWeightSheetSettings FitnessWeightSheet { get; set; } = new();
+        public static string RxpGuidesWatchThreadUrl { get; set; } = string.Empty;
 
         public static void Initialize()
         {
@@ -51,6 +52,7 @@ namespace DevClient.Data
             GoogleSheets = config.GetSection("googleSheets").Get<GoogleSheetsCredentialsSettings>() ?? new GoogleSheetsCredentialsSettings();
             GoogleHealth = config.GetSection("googleHealth").Get<GoogleHealthUserSettings[]>() ?? Array.Empty<GoogleHealthUserSettings>();
             FitnessWeightSheet = config.GetSection("fitnessWeightSheet").Get<FitnessWeightSheetSettings>() ?? new FitnessWeightSheetSettings();
+            RxpGuidesWatchThreadUrl = config.GetValue<string>("rxpGuidesWatch:threadUrl") ?? string.Empty;
         }
 
         private static string ResolveApiSettingsPath(string? configuredPath)
