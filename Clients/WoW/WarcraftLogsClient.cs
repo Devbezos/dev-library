@@ -241,6 +241,8 @@ namespace DevClient.Clients
             return Regex.Replace(sb.ToString(), "-{2,}", "-").Trim('-');
         }
 
+        public Task<JToken> QueryAsync(string query, object? variables = null) => PostQuery(query, variables ?? new { });
+
         private async Task<JToken> PostQuery(string query, object variables)
         {
             var token = await GetOAuthToken();
