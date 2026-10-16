@@ -122,6 +122,26 @@ namespace DevClient.Clients.Fitness
                 .GroupBy(dp => $"{dp.Steps.Interval.StartTime}|{dp.Steps.Interval.EndTime}", StringComparer.Ordinal)
                 .Sum(group => group.Max(dp => dp.Steps.GetCount()));
         }
+        /// <summary>
+        /// Steps since <paramref name="civilStart"/> (the phone's local time, e.g. today's midnight), or null when
+        /// Google Health couldn't be read, so a failed fetch isn't reported as zero steps.
+        /// </summary>
+        public async Task<long?> TryGetStepCountSince(DateTime civilStart)
+        {
+            var filter = $"steps.interval.civil_start_time >= \"{civilStart:yyyy-MM-ddTHH:mm:ss}\"";
+            long total = 0;
+            string? nextPage = null;
+            do
+            {
+                var result = await FetchDataType<GoogleHealthStepsResponse>("steps", filter, nextPage);
+                if (result == null) return null;
+                if (result.DataPoints.Count > 0)
+                    total += SumDistinctStepIntervals(result.DataPoints);
+                nextPage = result.NextPageToken;
+            } while (!string.IsNullOrEmpty(nextPage));
+            return total;
+        }
+
         public async Task<long> Get24HourStepCount()
         {
             var since = DateTime.Today.AddDays(-1).ToString("yyyy-MM-ddTHH:mm:ss");
