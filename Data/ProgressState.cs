@@ -6,6 +6,17 @@ public sealed class ProgressState
     public List<ProgressTask> Tasks { get; set; } = [];
     public List<ProgressGoal> Goals { get; set; } = [];
     public Dictionary<string, ProgressDailyNote> Notes { get; set; } = new();
+    public ProgressCheckInSettings CheckIn { get; set; } = new();
+}
+
+/// <summary>The bot's nightly Discord DM asking whether each habit and today's tasks got done.</summary>
+public sealed class ProgressCheckInSettings
+{
+    public bool Enabled { get; set; }
+    /// <summary>Discord user to DM, as a string because snowflakes exceed JS's safe integer range.</summary>
+    public string DiscordUserId { get; set; } = string.Empty;
+    /// <summary>Local time of day (America/Toronto), "HH:mm".</summary>
+    public string Time { get; set; } = "23:59";
 }
 
 public sealed class ProgressHabit
