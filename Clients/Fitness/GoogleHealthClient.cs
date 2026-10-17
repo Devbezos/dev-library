@@ -93,9 +93,55 @@ namespace DevClient.Clients.Fitness
             return JsonConvert.DeserializeObject<T>(json);
         }
 
+        /// <summary>
+        /// When set, workouts come from here (e.g. Hevy) instead of Google Health's exercise records. Everything else
+        /// (steps, sleep, heart rate, food, weight) still comes from Google.
+        /// </summary>
+        public IWorkoutSource? WorkoutSource { get; set; }
+
+        // Outside workouts in the same shape as Google's exercise records, so posts, calorie estimates and history
+        // treat them alike. They're strength sessions (Hevy is a lifting app) with their full duration as active time.
+        private async Task<List<GoogleHealthDataPoint>> GetSourceWorkouts(DateOnly from, DateOnly toExclusive) =>
+            (await WorkoutSource!.GetWorkouts(from, toExclusive))
+                .Select(w => new GoogleHealthDataPoint
+                {
+                    Exercise = new GoogleHealthExercise
+                    {
+                        DisplayName = w.Name,
+                        ExerciseType = "STRENGTH_TRAINING",
+                        ActiveDuration = $"{(int)Math.Max(0, (w.EndUtc - w.StartUtc).TotalSeconds)}s",
+                        Interval = new GoogleHealthInterval
+                        {
+                            StartTime = w.StartUtc.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                            EndTime = w.EndUtc.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                        },
+                    },
+                })
+                .ToList();
+
+        /// <summary>
+        /// Average heart rate Google recorded between <paramref name="startUtc"/> and <paramref name="endUtc"/>
+        /// (e.g. during a workout), or null when there's no reading or Google couldn't be read.
+        /// </summary>
+        public async Task<int?> GetAverageHeartRate(DateTime startUtc, DateTime endUtc)
+        {
+            var seconds = (int)(endUtc - startUtc).TotalSeconds;
+            if (seconds < 1 || seconds > 14 * 24 * 3600) return null;
+            var json = await PostRaw("users/me/dataTypes/heart-rate/dataPoints:rollUp", new
+            {
+                range = new { startTime = startUtc.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"), endTime = endUtc.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ") },
+                windowSize = $"{seconds}s",
+            });
+            if (json == null) return null;
+            var avg = Newtonsoft.Json.Linq.JObject.Parse(json)["rollupDataPoints"]?.FirstOrDefault()?["heartRate"]?["beatsPerMinuteAvg"]?.ToObject<double?>();
+            return avg is > 0 ? (int)Math.Round(avg.Value) : null;
+        }
+
         /// <summary>Exercises that started on <paramref name="day"/> (phone's local time).</summary>
         public async Task<List<GoogleHealthDataPoint>> GetDayExercises(DateOnly day)
         {
+            if (WorkoutSource != null)
+                return await GetSourceWorkouts(day, day.AddDays(1));
             var result = await FetchDataType<GoogleHealthDataPointsResponse>("exercise",
                 $"exercise.interval.civil_start_time >= \"{day:yyyy-MM-dd}T00:00:00\" AND exercise.interval.civil_start_time < \"{day.AddDays(1):yyyy-MM-dd}T00:00:00\"");
             return result?.DataPoints ?? new List<GoogleHealthDataPoint>();
@@ -192,6 +238,8 @@ namespace DevClient.Clients.Fitness
 
         public async Task<List<GoogleHealthDataPoint>> Get7DayExercises()
         {
+            if (WorkoutSource != null)
+                return await GetSourceWorkouts(DateOnly.FromDateTime(DateTime.Today.AddDays(-7)), DateOnly.FromDateTime(DateTime.Today).AddDays(1));
             var sevenDaysAgo = DateTime.Now.AddDays(-7).Date.ToString("yyyy-MM-ddTHH:mm:ss");
             var result = await FetchDataType<GoogleHealthDataPointsResponse>("exercise",
                 $"exercise.interval.civil_start_time >= \"{sevenDaysAgo}\"");
@@ -250,6 +298,8 @@ namespace DevClient.Clients.Fitness
 
         public async Task<List<GoogleHealthDataPoint>> GetWeekSoFarExercises()
         {
+            if (WorkoutSource != null)
+                return await GetSourceWorkouts(DateOnly.FromDateTime(GetStartOfWeek()), DateOnly.FromDateTime(DateTime.Today).AddDays(1));
             var since = GetStartOfWeek().ToString("yyyy-MM-ddTHH:mm:ss");
             var result = await FetchDataType<GoogleHealthDataPointsResponse>("exercise",
                 $"exercise.interval.civil_start_time >= \"{since}\"");
@@ -384,15 +434,27 @@ namespace DevClient.Clients.Fitness
             var hrBpm    = latestHr is not null && latestHr.DailyRestingHeartRate.BeatsPerMinute > 0
                 ? latestHr.DailyRestingHeartRate.BeatsPerMinute : (int?)null;
 
-            var activities = exercisesTask.Result
-                .GroupBy(e => NormalizeActivityName(
-                    !string.IsNullOrWhiteSpace(e.Exercise.DisplayName)
-                        ? e.Exercise.DisplayName
-                        : e.Exercise.ExerciseType))
-                .Select(g => new FitnessActivityEntry
+            // Google's average heart rate during each workout, combined per activity weighted by minutes.
+            var heartRates = await Task.WhenAll(exercisesTask.Result.Select(async e =>
+                DateTime.TryParse(e.Exercise.Interval.StartTime, null, System.Globalization.DateTimeStyles.AdjustToUniversal, out var start)
+                && DateTime.TryParse(e.Exercise.Interval.EndTime, null, System.Globalization.DateTimeStyles.AdjustToUniversal, out var end)
+                    ? (Exercise: e, Bpm: await GetAverageHeartRate(start, end))
+                    : (Exercise: e, Bpm: (int?)null)));
+
+            var activities = heartRates
+                .GroupBy(x => NormalizeActivityName(
+                    !string.IsNullOrWhiteSpace(x.Exercise.Exercise.DisplayName)
+                        ? x.Exercise.Exercise.DisplayName
+                        : x.Exercise.Exercise.ExerciseType))
+                .Select(g =>
                 {
-                    Name    = g.Key,
-                    Minutes = g.Sum(e => ParseDurationSeconds(e.Exercise.ActiveDuration) / 60),
+                    var withHr = g.Where(x => x.Bpm.HasValue).Select(x => (Bpm: x.Bpm!.Value, Minutes: Math.Max(1, ParseDurationSeconds(x.Exercise.Exercise.ActiveDuration) / 60))).ToList();
+                    return new FitnessActivityEntry
+                    {
+                        Name            = g.Key,
+                        Minutes         = g.Sum(x => ParseDurationSeconds(x.Exercise.Exercise.ActiveDuration) / 60),
+                        AvgHeartRateBpm = withHr.Count == 0 ? null : (int)Math.Round(withHr.Sum(x => (double)x.Bpm * x.Minutes) / withHr.Sum(x => x.Minutes)),
+                    };
                 })
                 .ToList();
 
@@ -422,7 +484,7 @@ namespace DevClient.Clients.Fitness
                         else if (n.Contains("walk")) met = 3.5;
                         else if (n.Contains("bike") || n.Contains("cycling")) met = 7.5;
                         else if (n.Contains("swim")) met = 8.0;
-                        else if (n.Contains("strength") || n.Contains("workout") || n.Contains("weight")) met = 6.0;
+                        else if (n.Contains("strength") || n.Contains("workout") || n.Contains("weight") || dp.Exercise.ExerciseType == "STRENGTH_TRAINING") met = 6.0;
                         // calories = mins * (MET * 3.5 * weightKg) / 200
                         return mins * (met * 3.5 * weightKg.Value) / 200.0;
                     }
@@ -526,7 +588,7 @@ namespace DevClient.Clients.Fitness
                         else if (n.Contains("walk")) met = 3.5;
                         else if (n.Contains("bike") || n.Contains("cycling")) met = 7.5;
                         else if (n.Contains("swim")) met = 8.0;
-                        else if (n.Contains("strength") || n.Contains("workout") || n.Contains("weight")) met = 6.0;
+                        else if (n.Contains("strength") || n.Contains("workout") || n.Contains("weight") || dp.Exercise.ExerciseType == "STRENGTH_TRAINING") met = 6.0;
                         return mins * (met * 3.5 * weightKg.Value) / 200.0;
                     }
 
@@ -599,7 +661,7 @@ namespace DevClient.Clients.Fitness
 
             string stepsStr = snapshot.Steps > 0 ? $"{snapshot.Steps:N0}" : "N/A";
 
-            string activityStr = snapshot.Activities.Count > 0 ? string.Join(", ", snapshot.Activities.Select(a => a.Minutes > 0 ? $"{a.Name} ({FormatMinutes(a.Minutes)})" : a.Name)) : "N/A";
+            string activityStr = snapshot.Activities.Count > 0 ? string.Join(", ", snapshot.Activities.Select(FormatActivity)) : "N/A";
 
             string hrStr = snapshot.RestingHrBpm.HasValue ? $"{snapshot.RestingHrBpm.Value} bpm" : "N/A";
 
@@ -748,6 +810,15 @@ namespace DevClient.Clients.Fitness
         {
             "Strength training", "Workout", "Weight training", "Resistance training"
         };
+
+        /// <summary>"Push Day (52 min · avg 118 bpm)", leaving out whatever isn't known.</summary>
+        internal static string FormatActivity(FitnessActivityEntry a)
+        {
+            var details = new List<string>();
+            if (a.Minutes > 0) details.Add(FormatMinutes(a.Minutes));
+            if (a.AvgHeartRateBpm is { } bpm) details.Add($"avg {bpm} bpm");
+            return details.Count == 0 ? a.Name : $"{a.Name} ({string.Join(" · ", details)})";
+        }
 
         private static string NormalizeActivityName(string name) =>
             WorkoutNames.Contains(name) ? "Workout" : name;

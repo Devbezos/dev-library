@@ -484,6 +484,8 @@ namespace DevClient.Data.Fitness
     {
         public string Name { get; set; } = string.Empty;
         public int Minutes { get; set; }
+        /// <summary>Average heart rate during the activity (from Google Health), when there were readings.</summary>
+        public int? AvgHeartRateBpm { get; set; }
     }
 
     public class DailyFitnessSnapshot

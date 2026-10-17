@@ -20,6 +20,8 @@ namespace DevClient.Data
         public static GoogleHealthUserSettings[] GoogleHealth { get; set; } = Array.Empty<GoogleHealthUserSettings>();
         public static FitnessWeightSheetSettings FitnessWeightSheet { get; set; } = new();
         public static string RxpGuidesWatchThreadUrl { get; set; } = string.Empty;
+        /// <summary>Hevy API key (<c>hevy:apiKey</c>, usually in the API's appsettings); empty turns Hevy sync off.</summary>
+        public static string HevyApiKey { get; set; } = string.Empty;
 
         public static void Initialize()
         {
@@ -53,6 +55,7 @@ namespace DevClient.Data
             GoogleHealth = config.GetSection("googleHealth").Get<GoogleHealthUserSettings[]>() ?? Array.Empty<GoogleHealthUserSettings>();
             FitnessWeightSheet = config.GetSection("fitnessWeightSheet").Get<FitnessWeightSheetSettings>() ?? new FitnessWeightSheetSettings();
             RxpGuidesWatchThreadUrl = config.GetValue<string>("rxpGuidesWatch:threadUrl") ?? string.Empty;
+            HevyApiKey = config.GetValue<string>("hevy:apiKey") ?? string.Empty;
         }
 
         private static string ResolveApiSettingsPath(string? configuredPath)
