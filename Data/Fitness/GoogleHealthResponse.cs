@@ -360,6 +360,38 @@ namespace DevClient.Data.Fitness
         public DateOnly ToDateOnly() => new DateOnly(Year, Month, Day);
     }
 
+    /// <summary>Response of <c>dataPoints:dailyRollUp</c> for steps: one merged total per day.</summary>
+    public class GoogleHealthStepsRollupResponse
+    {
+        [JsonProperty("rollupDataPoints")]
+        public List<GoogleHealthStepsRollupPoint> RollupDataPoints { get; set; } = new();
+
+        [JsonProperty("nextPageToken")]
+        public string? NextPageToken { get; set; }
+    }
+
+    public class GoogleHealthStepsRollupPoint
+    {
+        [JsonProperty("civilStartTime")]
+        public GoogleHealthCivilDateTime CivilStartTime { get; set; } = new();
+
+        [JsonProperty("steps")]
+        public GoogleHealthStepsRollupValue? Steps { get; set; }
+    }
+
+    public class GoogleHealthCivilDateTime
+    {
+        [JsonProperty("date")]
+        public GoogleHealthDate Date { get; set; } = new();
+    }
+
+    public class GoogleHealthStepsRollupValue
+    {
+        /// <summary>int64 sent as a string.</summary>
+        [JsonProperty("countSum")]
+        public string CountSum { get; set; } = "0";
+    }
+
     public class GoogleHealthNutritionResponse
     {
         [JsonProperty("dataPoints")]
@@ -462,6 +494,8 @@ namespace DevClient.Data.Fitness
         public double? CaloriesBurnt { get; set; }
         public double? CaloriesEaten { get; set; }
         public List<FitnessActivityEntry> Activities { get; set; } = new();
+        /// <summary>That day's last weigh-in, or null when there wasn't one.</summary>
+        public double? WeightLbs { get; set; }
     }
 
     public class WeeklyFitnessSnapshot

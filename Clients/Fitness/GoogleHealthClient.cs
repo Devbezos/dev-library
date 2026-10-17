@@ -93,59 +93,81 @@ namespace DevClient.Clients.Fitness
             return JsonConvert.DeserializeObject<T>(json);
         }
 
-        public async Task<List<GoogleHealthDataPoint>> Get24HourExercises()
+        /// <summary>Exercises that started on <paramref name="day"/> (phone's local time).</summary>
+        public async Task<List<GoogleHealthDataPoint>> GetDayExercises(DateOnly day)
         {
-            var since = DateTime.Today.AddDays(-1).ToString("yyyy-MM-ddTHH:mm:ss");
             var result = await FetchDataType<GoogleHealthDataPointsResponse>("exercise",
-                $"exercise.interval.civil_start_time >= \"{since}\"");
+                $"exercise.interval.civil_start_time >= \"{day:yyyy-MM-dd}T00:00:00\" AND exercise.interval.civil_start_time < \"{day.AddDays(1):yyyy-MM-dd}T00:00:00\"");
             return result?.DataPoints ?? new List<GoogleHealthDataPoint>();
         }
 
-        private async Task<long> FetchAllSteps(string filter)
+        public Task<List<GoogleHealthDataPoint>> Get24HourExercises() =>
+            GetDayExercises(DateOnly.FromDateTime(DateTime.Today.AddDays(-1)));
+
+        private async Task<string?> PostRaw(string path, object body)
         {
-            long total = 0;
-            string? nextPage = null;
-            do
+            var token = await GetAccessToken();
+            using var client = new HttpClient();
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            var content = new StringContent(JsonConvert.SerializeObject(body), System.Text.Encoding.UTF8, "application/json");
+            var response = await client.PostAsync($"{Constants.GoogleHealth.BaseUrl}/{path}", content);
+            var json = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode)
             {
-                var result = await FetchDataType<GoogleHealthStepsResponse>("steps", filter, nextPage);
-                if (result == null) break;
-                if (result.DataPoints.Count > 0)
-                    total += SumDistinctStepIntervals(result.DataPoints);
-                nextPage = result.NextPageToken;
-            } while (!string.IsNullOrEmpty(nextPage));
-            return total;
+                Log.Warning("GoogleHealthClient POST {Path} failed: {Json}", path, json);
+                return null;
+            }
+            return json;
         }
 
-        private static long SumDistinctStepIntervals(List<GoogleHealthStepsDataPoint> dataPoints)
-        {
-            return dataPoints
-                .GroupBy(dp => $"{dp.Steps.Interval.StartTime}|{dp.Steps.Interval.EndTime}", StringComparer.Ordinal)
-                .Sum(group => group.Max(dp => dp.Steps.GetCount()));
-        }
+        private static object CivilDate(DateOnly d) => new { date = new { year = d.Year, month = d.Month, day = d.Day } };
+
         /// <summary>
-        /// Steps since <paramref name="civilStart"/> (the phone's local time, e.g. today's midnight), or null when
-        /// Google Health couldn't be read, so a failed fetch isn't reported as zero steps.
+        /// Steps per day from <paramref name="from"/> up to (not including) <paramref name="toExclusive"/>, using
+        /// Google's daily roll-up. The roll-up merges overlapping sources (watch, phone, Health Connect apps) the way
+        /// the Fitbit and Google apps do; adding up raw step records double-counts them. Days without steps are
+        /// left out. Returns null when Google Health couldn't be read.
         /// </summary>
-        public async Task<long?> TryGetStepCountSince(DateTime civilStart)
+        public async Task<Dictionary<DateOnly, long>?> GetDailyStepTotals(DateOnly from, DateOnly toExclusive)
         {
-            var filter = $"steps.interval.civil_start_time >= \"{civilStart:yyyy-MM-ddTHH:mm:ss}\"";
-            long total = 0;
-            string? nextPage = null;
-            do
+            var totals = new Dictionary<DateOnly, long>();
+            // The roll-up accepts at most 90 days per request.
+            for (var start = from; start < toExclusive; start = start.AddDays(90))
             {
-                var result = await FetchDataType<GoogleHealthStepsResponse>("steps", filter, nextPage);
-                if (result == null) return null;
-                if (result.DataPoints.Count > 0)
-                    total += SumDistinctStepIntervals(result.DataPoints);
-                nextPage = result.NextPageToken;
-            } while (!string.IsNullOrEmpty(nextPage));
-            return total;
+                var end = start.AddDays(90) < toExclusive ? start.AddDays(90) : toExclusive;
+                string? pageToken = null;
+                do
+                {
+                    var json = await PostRaw("users/me/dataTypes/steps/dataPoints:dailyRollUp", new Dictionary<string, object?>
+                    {
+                        ["range"] = new { start = CivilDate(start), end = CivilDate(end) },
+                        ["pageToken"] = pageToken,
+                    });
+                    if (json == null) return null;
+                    var parsed = JsonConvert.DeserializeObject<GoogleHealthStepsRollupResponse>(json);
+                    foreach (var point in parsed?.RollupDataPoints ?? [])
+                        if (point.Steps is { } steps && long.TryParse(steps.CountSum, out var count))
+                            totals[point.CivilStartTime.Date.ToDateOnly()] = count;
+                    pageToken = parsed?.NextPageToken;
+                } while (!string.IsNullOrEmpty(pageToken));
+            }
+            return totals;
         }
 
+        private async Task<long?> TrySumSteps(DateOnly from, DateOnly toExclusive) =>
+            await GetDailyStepTotals(from, toExclusive) is { } totals ? totals.Values.Sum() : null;
+
+        /// <summary>
+        /// Steps on <paramref name="day"/> (phone's local date), or null when Google Health couldn't be read, so a
+        /// failed fetch isn't reported as zero steps.
+        /// </summary>
+        public Task<long?> TryGetStepCountForDay(DateOnly day) => TrySumSteps(day, day.AddDays(1));
+
+        /// <summary>Yesterday's steps (the daily post is a summary of yesterday).</summary>
         public async Task<long> Get24HourStepCount()
         {
-            var since = DateTime.Today.AddDays(-1).ToString("yyyy-MM-ddTHH:mm:ss");
-            return await FetchAllSteps($"steps.interval.civil_start_time >= \"{since}\"");
+            var yesterday = DateOnly.FromDateTime(DateTime.Today.AddDays(-1));
+            return await TrySumSteps(yesterday, yesterday.AddDays(1)) ?? 0;
         }
 
         public async Task<List<GoogleHealthSleepDataPoint>> Get24HourSleep()
@@ -178,8 +200,8 @@ namespace DevClient.Clients.Fitness
 
         public async Task<long> Get7DayStepCount()
         {
-            var sevenDaysAgo = DateTime.Now.AddDays(-7).Date.ToString("yyyy-MM-ddTHH:mm:ss");
-            return await FetchAllSteps($"steps.interval.civil_start_time >= \"{sevenDaysAgo}\"");
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            return await TrySumSteps(today.AddDays(-7), today.AddDays(1)) ?? 0;
         }
 
         public async Task<List<GoogleHealthSleepDataPoint>> Get7DaySleep()
@@ -234,11 +256,8 @@ namespace DevClient.Clients.Fitness
             return result?.DataPoints ?? new List<GoogleHealthDataPoint>();
         }
 
-        public async Task<long> GetWeekSoFarStepCount()
-        {
-            var since = GetStartOfWeek().ToString("yyyy-MM-ddTHH:mm:ss");
-            return await FetchAllSteps($"steps.interval.civil_start_time >= \"{since}\"");
-        }
+        public async Task<long> GetWeekSoFarStepCount() =>
+            await TrySumSteps(DateOnly.FromDateTime(GetStartOfWeek()), DateOnly.FromDateTime(DateTime.Today).AddDays(1)) ?? 0;
 
         public async Task<List<GoogleHealthSleepDataPoint>> GetWeekSoFarSleep()
         {
@@ -287,15 +306,76 @@ namespace DevClient.Clients.Fitness
             return latest.Weight.WeightKg.HasValue ? latest.Weight.WeightKg!.Value * 2.20462 : null;
         }
 
-        public async Task<DailyFitnessSnapshot> GetDailySnapshot()
+        /// <summary>
+        /// Yesterday's stats for the daily post, with last night's sleep (the one you just woke up from).
+        /// </summary>
+        public Task<DailyFitnessSnapshot> GetDailySnapshot()
         {
-            var exercisesTask  = Get24HourExercises();
-            var stepsTask      = Get24HourStepCount();
-            var sleepTask      = Get24HourSleep();
-            var hrTask         = GetRestingHeartRate(1);
-            var nutritionTask  = GetDayNutrition(DateOnly.FromDateTime(DateTime.Today.AddDays(-1)));
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            return GetDaySnapshot(today.AddDays(-1), sleepWakeDate: today);
+        }
+
+        /// <summary>
+        /// Resting heart rate Google computed for <paramref name="day"/>.
+        /// </summary>
+        private async Task<List<GoogleHealthRestingHrDataPoint>> GetDayRestingHeartRate(DateOnly day)
+        {
+            var result = await FetchDataType<GoogleHealthRestingHrResponse>("daily-resting-heart-rate",
+                $"daily_resting_heart_rate.date >= \"{day:yyyy-MM-dd}\" AND daily_resting_heart_rate.date < \"{day.AddDays(1):yyyy-MM-dd}\"");
+            return result?.DataPoints.Where(dp => dp.DailyRestingHeartRate.BeatsPerMinute > 0).ToList() ?? new List<GoogleHealthRestingHrDataPoint>();
+        }
+
+        /// <summary>
+        /// Main (non-nap) sleep sessions that ended on <paramref name="wakeDate"/>, local time. Sleep can't be filtered
+        /// by date, so this pages back (newest first) until it's past that night.
+        /// </summary>
+        public async Task<List<GoogleHealthSleepDataPoint>> GetSleepWokenOn(DateOnly wakeDate)
+        {
+            var found = new List<GoogleHealthSleepDataPoint>();
+            string? pageToken = null;
+            for (var page = 0; page < 20; page++)
+            {
+                var result = await FetchDataType<GoogleHealthSleepResponse>("sleep", null, pageToken);
+                if (result == null) break;
+                found.AddRange(result.DataPoints.Where(dp => !dp.Sleep.Metadata.Nap
+                    && DateTime.TryParse(dp.Sleep.Interval.EndTime, out var end) && DateOnly.FromDateTime(end) == wakeDate));
+                var oldestStart = result.DataPoints
+                    .Select(dp => DateTime.TryParse(dp.Sleep.Interval.StartTime, out var s) ? s : DateTime.MaxValue)
+                    .DefaultIfEmpty(DateTime.MaxValue).Min();
+                pageToken = result.NextPageToken;
+                if (string.IsNullOrEmpty(pageToken) || DateOnly.FromDateTime(oldestStart) < wakeDate.AddDays(-2))
+                    break;
+            }
+            return found;
+        }
+
+        /// <summary>The last weigh-in on <paramref name="day"/> in lbs, or null when there wasn't one.</summary>
+        public async Task<double?> GetDayWeightLbs(DateOnly day)
+        {
+            var result = await FetchDataType<GoogleHealthWeightResponse>("weight",
+                $"weight.sample_time.civil_time >= \"{day:yyyy-MM-dd}T00:00:00\" AND weight.sample_time.civil_time < \"{day.AddDays(1):yyyy-MM-dd}T00:00:00\"");
+            var latest = result?.DataPoints
+                .Where(dp => dp.Weight.WeightKg.HasValue)
+                .OrderByDescending(dp => dp.Weight.SampleTime.PhysicalTime)
+                .FirstOrDefault();
+            return latest?.Weight.WeightKg * 2.20462;
+        }
+
+        /// <summary>
+        /// Stats for one calendar <paramref name="day"/> (phone's local time): steps, exercises, food, resting heart
+        /// rate and weigh-in from that day, plus the sleep you woke up from on <paramref name="sleepWakeDate"/>.
+        /// </summary>
+        public async Task<DailyFitnessSnapshot> GetDaySnapshot(DateOnly day, DateOnly sleepWakeDate)
+        {
+            var exercisesTask  = GetDayExercises(day);
+            var stepsTask      = TryGetStepCountForDay(day);
+            var sleepTask      = GetSleepWokenOn(sleepWakeDate);
+            var hrTask         = GetDayRestingHeartRate(day);
+            var nutritionTask  = GetDayNutrition(day);
             var weightTask     = GetMostRecentWeightLbs();
-            await Task.WhenAll(exercisesTask, stepsTask, sleepTask, hrTask, nutritionTask, weightTask);
+            var dayWeightTask  = GetDayWeightLbs(day);
+            await Task.WhenAll(exercisesTask, stepsTask, sleepTask, hrTask, nutritionTask, weightTask, dayWeightTask);
+            var steps = stepsTask.Result ?? 0;
 
             var mainSleep  = sleepTask.Result.OrderByDescending(s => s.Sleep.Summary.MinutesAsleep).FirstOrDefault();
             var sleepHours = mainSleep?.Sleep.GetDurationHours() is double h && h > 0 ? h : (double?)null;
@@ -352,20 +432,21 @@ namespace DevClient.Clients.Fitness
                 }
 
                 // Fallback: approximate from steps (avg ~0.04 kcal/step)
-                if (!caloriesBurnt.HasValue && stepsTask.Result > 0)
+                if (!caloriesBurnt.HasValue && steps > 0)
                 {
-                    caloriesBurnt = stepsTask.Result * 0.04;
+                    caloriesBurnt = steps * 0.04;
                 }
             }
 
             return new DailyFitnessSnapshot
             {
                 SleepHours    = sleepHours,
-                Steps         = stepsTask.Result,
+                Steps         = steps,
                 RestingHrBpm  = hrBpm,
                 CaloriesBurnt = caloriesBurnt.HasValue && caloriesBurnt.Value > 0 ? caloriesBurnt : null,
                 CaloriesEaten = caloriesEaten > 0 ? caloriesEaten : null,
                 Activities    = activities,
+                WeightLbs     = dayWeightTask.Result,
             };
         }
 
