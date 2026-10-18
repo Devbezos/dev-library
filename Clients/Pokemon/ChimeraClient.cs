@@ -7,7 +7,7 @@ namespace DevClient.Clients
     public class ChimeraClient
     {
         private static readonly ILogger Logger = Log.ForContext<ChimeraClient>();
-        private static readonly HttpClient Client = new();
+        private static readonly HttpClient Client = ScrapingNetwork.CreateHttpClient();
         private const string DefaultCollectionUrl = "https://chimeragamingonline.com/collections/pokemon?filter.v.availability=1&filter.v.price.gte=20&filter.v.price.lte=&page={0}";
         private const string ChimeraBaseUrl = "https://chimeragamingonline.com";
         private readonly ITcgSourceUrlRepository? _sourceUrlRepo;

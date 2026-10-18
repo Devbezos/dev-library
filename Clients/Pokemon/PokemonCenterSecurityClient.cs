@@ -102,11 +102,14 @@ public sealed class PokemonCenterSecurityClient
 
     private static HttpClient CreateClient()
     {
-        return new HttpClient(new HttpClientHandler
+        var handler = new HttpClientHandler
         {
             AllowAutoRedirect = true,
             AutomaticDecompression = DecompressionMethods.All,
-        })
+        };
+        ScrapingNetwork.ApplyExpressVpnProxy(handler);
+
+        return new HttpClient(handler)
         {
             Timeout = TimeSpan.FromSeconds(20),
         };

@@ -8,7 +8,7 @@ namespace DevClient.Clients
     public class DollysClient
     {
         private static readonly ILogger Logger = Log.ForContext<DollysClient>();
-        private static readonly HttpClient _client = new();
+        private static readonly HttpClient _client = ScrapingNetwork.CreateHttpClient();
         private static readonly string DollysBaseUrl = "https://www.dollys.ca";
 
         private static readonly (string Url, string Category)[] Catalogs =

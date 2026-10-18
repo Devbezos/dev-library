@@ -19,6 +19,7 @@ namespace DevClient.Clients
             var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
             {
                 Headless = true,
+                Proxy = ScrapingNetwork.CreatePlaywrightProxy(),
                 Args =
                 [
                     "--disable-blink-features=AutomationControlled",

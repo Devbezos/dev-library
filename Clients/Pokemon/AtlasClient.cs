@@ -7,7 +7,7 @@ namespace DevClient.Clients
     public class AtlasClient
     {
         private static readonly ILogger Logger = Log.ForContext<AtlasClient>();
-        private static readonly HttpClient client = new();
+        private static readonly HttpClient client = ScrapingNetwork.CreateHttpClient();
         private static readonly (string Url, string Category)[] AtlasPokemonDefaults =
         [
             ("https://www.atlascollectables.com/catalog/pokemon-pokemon_sealed_products-pokemon_booster_boxes/386?filter_by_stock=in-stock", "Booster Boxes"),
@@ -97,7 +97,7 @@ namespace DevClient.Clients
             }
             finally
             {
-                Logger.Information("GetPokemon: END — {Count} total products", results.Sum(r => r.Products.Count));
+                Logger.Information("GetPokemon: END - {Count} total products", results.Sum(r => r.Products.Count));
             }
 
             return results;
@@ -123,7 +123,7 @@ namespace DevClient.Clients
             }
             finally
             {
-                Logger.Information("GetGundam: END — {Count} total products", results.Sum(r => r.Products.Count));
+                Logger.Information("GetGundam: END - {Count} total products", results.Sum(r => r.Products.Count));
             }
 
             return results;

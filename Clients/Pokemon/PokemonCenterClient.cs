@@ -5,7 +5,7 @@ namespace DevClient.Clients
 {
     public class PokemonCenterClient
     {
-        private static readonly HttpClient client = new();
+        private static readonly HttpClient client = ScrapingNetwork.CreateHttpClient();
         private static readonly string searchUrl = "https://www.pokemoncenter.com/en-ca/search/{0}";
         private static readonly List<string> Keywords = new List<string>() { "prismatic-evolutions" };
 

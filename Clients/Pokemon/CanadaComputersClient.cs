@@ -5,7 +5,7 @@ namespace DevClient.Clients
 {
     public class CanadaComputersClient
     {
-        private static readonly HttpClient client = new();
+        private static readonly HttpClient client = ScrapingNetwork.CreateHttpClient();
         private readonly DevClient.Data.ITcgSourceUrlRepository? _sourceUrlRepo;
         private static readonly string ccSearchUrl = "https://www.canadacomputers.com/en/search?id_category=914&s={0}&a=0&b=0";
         // Trading cards / boosters category URL (with and without ship filter).

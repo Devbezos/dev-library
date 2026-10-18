@@ -9,7 +9,7 @@ namespace DevClient.Clients
     public class _401GamesClient
     {
         private static readonly ILogger Logger = Log.ForContext<_401GamesClient>();
-        private static readonly HttpClient client = new(new HttpClientHandler { UseCookies = false });
+        private static readonly HttpClient client = ScrapingNetwork.CreateHttpClient(useCookies: false);
         private const string UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
         private static readonly (string Url, string Category)[] DefaultUrls =
         [

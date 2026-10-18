@@ -9,7 +9,7 @@ namespace DevClient.Clients
     public class ShopifyCollectionClient
     {
         private static readonly ILogger Logger = Log.ForContext<ShopifyCollectionClient>();
-        private static readonly HttpClient Client = new();
+        private static readonly HttpClient Client = ScrapingNetwork.CreateHttpClient();
         private const string UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
         private const int MaxSearchPages = 20;
 

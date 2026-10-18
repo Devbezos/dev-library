@@ -7,7 +7,7 @@ namespace DevClient.Clients
     public class HouseOfCardsClient
     {
         private static readonly ILogger Logger = Log.ForContext<HouseOfCardsClient>();
-        private static readonly HttpClient Client = new();
+        private static readonly HttpClient Client = ScrapingNetwork.CreateHttpClient();
         private const string UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
         private static readonly (string Url, string Category)[] DefaultUrls =
         [
