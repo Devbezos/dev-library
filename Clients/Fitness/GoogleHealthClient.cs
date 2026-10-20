@@ -137,11 +137,39 @@ namespace DevClient.Clients.Fitness
             return avg is > 0 ? (int)Math.Round(avg.Value) : null;
         }
 
-        /// <summary>Exercises that started on <paramref name="day"/> (phone's local time).</summary>
+        /// <summary>
+        /// Exercises that started on <paramref name="day"/> (phone's local time). With a <see cref="WorkoutSource"/>,
+        /// its workouts plus Google's stretching sessions, since stretches are only ever logged to Google.
+        /// </summary>
         public async Task<List<GoogleHealthDataPoint>> GetDayExercises(DateOnly day)
         {
-            if (WorkoutSource != null)
-                return await GetSourceWorkouts(day, day.AddDays(1));
+            if (WorkoutSource == null)
+                return await GetGoogleDayExercises(day);
+            var sourceTask = GetSourceWorkouts(day, day.AddDays(1));
+            var stretchesTask = GetGoogleStretches(day);
+            await Task.WhenAll(sourceTask, stretchesTask);
+            return [.. sourceTask.Result, .. stretchesTask.Result];
+        }
+
+        // Best effort: the source's workouts still count when Google can't be read.
+        private async Task<List<GoogleHealthDataPoint>> GetGoogleStretches(DateOnly day)
+        {
+            if (string.IsNullOrEmpty(_settings.RefreshToken))
+                return [];
+            try
+            {
+                return (await GetGoogleDayExercises(day)).Where(e => FitnessActivityKinds.IsStretching(
+                    !string.IsNullOrWhiteSpace(e.Exercise.DisplayName) ? e.Exercise.DisplayName : e.Exercise.ExerciseType)).ToList();
+            }
+            catch (Exception ex)
+            {
+                Log.Warning("GoogleHealthClient: could not read stretches for {Username}: {Error}", _settings.Username, ex.Message);
+                return [];
+            }
+        }
+
+        private async Task<List<GoogleHealthDataPoint>> GetGoogleDayExercises(DateOnly day)
+        {
             var result = await FetchDataType<GoogleHealthDataPointsResponse>("exercise",
                 $"exercise.interval.civil_start_time >= \"{day:yyyy-MM-dd}T00:00:00\" AND exercise.interval.civil_start_time < \"{day.AddDays(1):yyyy-MM-dd}T00:00:00\"");
             return result?.DataPoints ?? new List<GoogleHealthDataPoint>();
