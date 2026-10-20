@@ -11,8 +11,8 @@ namespace DevClient.Clients
 {
     public class WarcraftLogsClient : IWarcraftLogsClient
     {
-        private static string? _cachedToken;
-        private static DateTime _tokenExpiry = DateTime.MinValue;
+        // Per client id: the dashboard can use someone's own Warcraft Logs keys, which get their own token.
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Token, DateTime Expiry)> Tokens = new();
 
         private readonly WarcraftLogsSettings? _settings;
 
@@ -25,10 +25,10 @@ namespace DevClient.Clients
 
         private async Task<string> GetOAuthToken()
         {
-            if (_cachedToken != null && DateTime.UtcNow < _tokenExpiry)
-                return _cachedToken;
-
             var settings = Settings;
+            if (Tokens.TryGetValue(settings.ClientId, out var cached) && DateTime.UtcNow < cached.Expiry)
+                return cached.Token;
+
             var base64Auth = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{settings.ClientId}:{settings.ClientSecret}"));
 
             using var client = new HttpClient();
@@ -41,10 +41,8 @@ namespace DevClient.Clients
             var json = await response.Content.ReadAsStringAsync();
             var tokenResponse = JsonConvert.DeserializeObject<WarcraftLogsOAuthResponse>(json)!;
 
-            _cachedToken = tokenResponse.AccessToken;
-            _tokenExpiry = DateTime.UtcNow.AddSeconds(tokenResponse.ExpiresIn - 60);
-
-            return _cachedToken;
+            Tokens[settings.ClientId] = (tokenResponse.AccessToken, DateTime.UtcNow.AddSeconds(tokenResponse.ExpiresIn - 60));
+            return tokenResponse.AccessToken;
         }
 
         public async Task<WarcraftLogsCharacterZoneRankings?> GetCharacterRankings(string? characterName, string? realm, string? region, string characterUrl, int? characterId = null)
