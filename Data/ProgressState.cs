@@ -26,6 +26,11 @@ public sealed class ProgressHabit
     public decimal Target { get; set; } = 1;
     public string Unit { get; set; } = string.Empty;
     public string Color { get; set; } = string.Empty;
+    /// <summary>
+    /// "sleep", "steps", "gym" or "calories" to fill the habit from Google Health / Hevy instead of asking in the
+    /// check-in; null for habits you answer yourself.
+    /// </summary>
+    public string? AutoSource { get; set; }
     public Dictionary<string, decimal> Completions { get; set; } = new();
 }
 

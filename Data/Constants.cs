@@ -19,6 +19,7 @@ namespace DevClient.Data
             public const string PokemonCenterSecurity   = "pokemon_center_security";
             public const string WoWUtilsRosterSync      = "wow_utils_roster_sync";
             public const string RxpGuidesWatch          = "rxp_guides_watch";
+            public const string FitnessHistory          = "fitness_history";
         }
 
         public static class GoogleHealth
