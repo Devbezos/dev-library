@@ -15,8 +15,10 @@ namespace DevClient.Clients.Fitness
         private readonly GoogleHealthUserSettings _settings;
         private readonly IFitnessRepository? _fitnessRepository;
 
-        private string? _accessToken;
-        private DateTime _tokenExpiry = DateTime.MinValue;
+        // Access tokens last an hour and a client is created per request, so they're shared by refresh token across
+        // instances; the lock stops a snapshot's parallel calls from each refreshing at once.
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Token, DateTime Expiry)> SharedTokens = new();
+        private static readonly SemaphoreSlim TokenRefreshLock = new(1, 1);
 
         public GoogleHealthClient(GoogleHealthUserSettings settings) : this(settings, new DiscordClient(), null) { }
         public GoogleHealthClient(GoogleHealthUserSettings settings, IFitnessRepository fitnessRepository) : this(settings, new DiscordClient(), fitnessRepository) { }
@@ -30,9 +32,25 @@ namespace DevClient.Clients.Fitness
 
         private async Task<string> GetAccessToken()
         {
-            if (_accessToken != null && DateTime.UtcNow < _tokenExpiry.AddMinutes(-5))
-                return _accessToken;
+            if (TryGetSharedToken() is { } cached)
+                return cached;
 
+            await TokenRefreshLock.WaitAsync();
+            try
+            {
+                return TryGetSharedToken() ?? await RefreshAccessToken();
+            }
+            finally
+            {
+                TokenRefreshLock.Release();
+            }
+        }
+
+        private string? TryGetSharedToken() =>
+            SharedTokens.TryGetValue(_settings.RefreshToken, out var shared) && DateTime.UtcNow < shared.Expiry.AddMinutes(-5) ? shared.Token : null;
+
+        private async Task<string> RefreshAccessToken()
+        {
             Log.Information("GoogleHealthClient: Refreshing access token");
 
             using var client = new HttpClient();
@@ -53,10 +71,8 @@ namespace DevClient.Clients.Fitness
             var tokenResponse = JsonConvert.DeserializeObject<GoogleHealthTokenResponse>(json)
                 ?? throw new InvalidOperationException("Failed to parse token response");
 
-            _accessToken = tokenResponse.AccessToken;
-            _tokenExpiry = DateTime.UtcNow.AddSeconds(tokenResponse.ExpiresIn);
-
-            return _accessToken;
+            SharedTokens[_settings.RefreshToken] = (tokenResponse.AccessToken, DateTime.UtcNow.AddSeconds(tokenResponse.ExpiresIn));
+            return tokenResponse.AccessToken;
         }
 
         private async Task<string?> FetchRaw(string dataType, string? filter = null, string? pageToken = null)
