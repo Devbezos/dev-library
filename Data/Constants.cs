@@ -26,6 +26,7 @@ namespace DevClient.Data
         {
             public const string TokenUrl = "https://oauth2.googleapis.com/token";
             public const string BaseUrl  = "https://health.googleapis.com/v4";
+            public const string CalendarBaseUrl = "https://www.googleapis.com/calendar/v3";
         }
 
         public static class WoW

@@ -75,6 +75,9 @@ public interface IProgressRepository
     void EnsureDefault(ProgressState state);
     ProgressState Get();
     void Save(ProgressState state);
+    /// <summary>A user's own Progress (keyed by their sign-in); Get/Save are the admins'.</summary>
+    ProgressState GetFor(string key);
+    void SaveFor(ProgressState state, string key);
 }
 
 

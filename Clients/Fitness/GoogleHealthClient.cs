@@ -30,7 +30,8 @@ namespace DevClient.Clients.Fitness
             _fitnessRepository = fitnessRepository;
         }
 
-        private async Task<string> GetAccessToken()
+        // Public so other Google APIs granted to the same sign-in (e.g. Calendar) can share the token.
+        public async Task<string> GetAccessToken()
         {
             if (TryGetSharedToken() is { } cached)
                 return cached;
@@ -89,16 +90,22 @@ namespace DevClient.Clients.Fitness
             if (pageToken != null) queryParts.Add($"pageToken={pageToken}");
             if (queryParts.Count > 0) url += "?" + string.Join("&", queryParts);
 
-            var response = await client.GetAsync(url);
-            var json = await response.Content.ReadAsStringAsync();
-
-            if (!response.IsSuccessStatusCode)
+            // A day's snapshot fires several reads at once; rate limits and server hiccups get a couple of retries
+            // so a passing failure doesn't come back as "no data".
+            for (var attempt = 1; ; attempt++)
             {
-                Log.Warning("GoogleHealthClient fetch {DataType} failed: {Json}", dataType, json);
-                return null;
+                using var response = await client.GetAsync(url);
+                var json = await response.Content.ReadAsStringAsync();
+                if (response.IsSuccessStatusCode)
+                    return json;
+                var retryable = (int)response.StatusCode == 429 || (int)response.StatusCode >= 500;
+                if (!retryable || attempt == 3)
+                {
+                    Log.Warning("GoogleHealthClient fetch {DataType} failed ({Status}): {Json}", dataType, (int)response.StatusCode, json);
+                    return null;
+                }
+                await Task.Delay(TimeSpan.FromSeconds(attempt * 2));
             }
-
-            return json;
         }
 
         private async Task<T?> FetchDataType<T>(string dataType, string? filter = null, string? pageToken = null) where T : class
@@ -114,6 +121,12 @@ namespace DevClient.Clients.Fitness
         /// (steps, sleep, heart rate, food, weight) still comes from Google.
         /// </summary>
         public IWorkoutSource? WorkoutSource { get; set; }
+
+        /// <summary>
+        /// Calories a day takes at rest and everyday movement; when set, the daily post shows calories burnt as this plus
+        /// what the day's activity burned.
+        /// </summary>
+        public double? MaintenanceCalories { get; set; }
 
         // Outside workouts in the same shape as Google's exercise records, so posts, calorie estimates and history
         // treat them alike. They're strength sessions (Hevy is a lifting app) with their full duration as active time.
@@ -401,12 +414,13 @@ namespace DevClient.Clients.Fitness
         }
 
         /// <summary>
-        /// Yesterday's stats for the daily post, with last night's sleep (the one you just woke up from).
+        /// Yesterday's stats for the daily post. Sleep is the night that ended yesterday morning, the same as the stored
+        /// history and the Today tab: the post goes out just after midnight, before last night's sleep exists.
         /// </summary>
         public Task<DailyFitnessSnapshot> GetDailySnapshot()
         {
-            var today = DateOnly.FromDateTime(DateTime.Today);
-            return GetDaySnapshot(today.AddDays(-1), sleepWakeDate: today);
+            var yesterday = DateOnly.FromDateTime(DateTime.Today).AddDays(-1);
+            return GetDaySnapshot(yesterday, sleepWakeDate: yesterday);
         }
 
         /// <summary>
@@ -683,7 +697,7 @@ namespace DevClient.Clients.Fitness
         {
             Log.Information("GoogleHealthClient.PostDailyFitnessStats: START");
             var snapshot = await GetDailySnapshot();
-            var dailyEmbed = BuildDailyEmbed(_settings.Username, snapshot);
+            var dailyEmbed = BuildDailyEmbed(_settings.Username, snapshot, MaintenanceCalories);
             await _discordClient.PostEmbed(_settings.ChannelId, dailyEmbed);
             _fitnessRepository?.LogPost(_settings.Username, "daily");
             Log.Information("GoogleHealthClient.PostDailyFitnessStats: END");
@@ -691,7 +705,8 @@ namespace DevClient.Clients.Fitness
 
         private static Embed BuildDailyEmbed(
             string username,
-            DailyFitnessSnapshot snapshot)
+            DailyFitnessSnapshot snapshot,
+            double? maintenanceCalories)
         {
             var builder = new EmbedBuilder()
                 .WithTitle($"{username} — Daily Fitness — {DateTime.Today.AddDays(-1):MMM d, yyyy}")
@@ -709,7 +724,10 @@ namespace DevClient.Clients.Fitness
 
             string hrStr = snapshot.RestingHrBpm.HasValue ? $"{snapshot.RestingHrBpm.Value} bpm" : "N/A";
 
-            string caloriesBurntStr = snapshot.CaloriesBurnt.HasValue ? $"{snapshot.CaloriesBurnt.Value:0} kcal" : "N/A";
+            var active = snapshot.CaloriesBurnt ?? 0;
+            string caloriesBurntStr = maintenanceCalories is { } maintenance
+                ? $"{maintenance + active:0} kcal\n-# {maintenance:0} maintenance + {active:0} active"
+                : snapshot.CaloriesBurnt.HasValue ? $"{snapshot.CaloriesBurnt.Value:0} kcal" : "N/A";
             string caloriesEatenStr = snapshot.CaloriesEaten.HasValue ? $"{snapshot.CaloriesEaten.Value:0} kcal" : "N/A";
 
             builder.AddField("😴 Sleep", sleepStr, true);
