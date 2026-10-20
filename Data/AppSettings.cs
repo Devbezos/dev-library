@@ -97,6 +97,8 @@ namespace DevClient.Data
         public GoogleSheetsSettings? GoogleSheet { get; set; }
         public ApplicationSheetSettings? ApplicationSheet { get; set; }
         public ulong[] DenyUserIds { get; set; } = Array.Empty<ulong>();
+        /// <summary>Tabs turned off on the guild's page; e.g. "rxpguides" stops its RXPGuides posts.</summary>
+        public string[] HiddenTabs { get; set; } = [];
     }
 
     public class GuildFeatures

@@ -21,6 +21,8 @@ namespace DevClient.Data.Discord
         public GoogleSheetsSettings? GoogleSheet { get; set; }
         public ApplicationSheetSettings? ApplicationSheet { get; set; }
         public string[] DenyUserIds { get; set; } = [];
+        /// <summary>Tabs turned off on the guild's page that have no feature switch of their own (e.g. warcraftlogs, rxpguides).</summary>
+        public string[] HiddenTabs { get; set; } = [];
         public bool IsDeleted { get; set; } = false;
 
         public static GuildSettingsDto From(GuildSettings g) => new()
@@ -48,7 +50,8 @@ namespace DevClient.Data.Discord
                         ? g.GoogleSheet?.CredentialsPath ?? string.Empty
                         : g.ApplicationSheet.CredentialsPath
                 },
-            DenyUserIds = g.DenyUserIds?.Select(id => id.ToString()).ToArray() ?? []
+            DenyUserIds = g.DenyUserIds?.Select(id => id.ToString()).ToArray() ?? [],
+            HiddenTabs = g.HiddenTabs ?? []
         };
 
         public GuildSettings ToGuildSettings() => new()
@@ -78,7 +81,8 @@ namespace DevClient.Data.Discord
             DenyUserIds = DenyUserIds
                 .Select(id => ulong.TryParse(id, out var r) ? r : 0UL)
                 .Where(id => id != 0)
-                .ToArray()
+                .ToArray(),
+            HiddenTabs = HiddenTabs ?? []
         };
     }
 }
