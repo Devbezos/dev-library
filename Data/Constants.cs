@@ -54,8 +54,6 @@ namespace DevClient.Data
 
             public static class BattleNet
             {
-                public const string RealmDataEndpoint = "/connected-realm/61?namespace=dynamic-us&locale=en_US";
-                public const string AllRealmsEndpoint  = "/connected-realm/index?namespace=dynamic-us&locale=en_US";
                 public const string ItemNameEndpoint   = "/item/{0}?namespace=static-us&locale=en_US";
             }
 

@@ -1,6 +1,5 @@
 using DevClient.Data;
 using DevClient.Clients;
-using Newtonsoft.Json;
 using Serilog;
 
 namespace DevClient
@@ -9,47 +8,62 @@ namespace DevClient
     {
         private readonly IDiscordClient _discordClient;
         private readonly IBattleNetClient _battleNetClient;
+        private readonly IServerAvailabilityRepository _repository;
 
-        public RealmClient(IDiscordClient discordClient, IBattleNetClient battleNetClient)
+        public RealmClient(IDiscordClient discordClient, IBattleNetClient battleNetClient, IServerAvailabilityRepository repository)
         {
             _discordClient = discordClient;
             _battleNetClient = battleNetClient;
+            _repository = repository;
         }
 
-        public async Task<bool> PostServerAvailability()
+        /// <summary>
+        /// Checks each realm a guild monitors once, and when its status changed since the last check posts to every
+        /// guild monitoring it. A realm seen for the first time is only recorded; a failed check changes nothing.
+        /// </summary>
+        public async Task PostServerAvailability()
         {
-            var fileLocation = $"{AppSettings.BasePath}/realmcache.json";
+            var log = Log.ForContext("SourceContext", "RealmClient.PostServerAvailability");
+            var realms = _repository.GetMonitored()
+                .GroupBy(g => (Region: g.Region!.ToLowerInvariant(), Slug: g.RealmSlug!.ToLowerInvariant()));
 
-            var realmData = await _battleNetClient.GetZuljinData();
-            var cachedData = JsonConvert.DeserializeObject<BlizzardRealmResponse>(File.ReadAllText(fileLocation))!;
-
-            File.WriteAllText(fileLocation, JsonConvert.SerializeObject(realmData));
-
-            if (realmData.Status.Name.ToUpper() != cachedData.Status.Name.ToUpper())
+            foreach (var realm in realms)
             {
-                Log.ForContext("SourceContext", "RealmClient.PostServerAvailability")
-                   .Information("Server status changed: {Old} -> {New}", cachedData.Status.Name, realmData.Status.Name);
-
-                if (realmData.Status.Name.ToUpper() == "UP")
+                BattleNetRealmStatus current;
+                try
                 {
-                    foreach (var guild in AppSettings.Guilds.Where(g => g.Features.ServerAvailability))
-                    {
-                        var roles = BuildRoleMentions(guild.RolesToPing);
-                        await _discordClient.PostToChannel(
-                            guild.Channels.GetValueOrDefault("general"),
-                            $"Servers are back online! maybe? :3{roles}");
-                    }
-
-                    return true;
+                    current = await _battleNetClient.GetRealmStatus(realm.Key.Region, realm.Key.Slug);
                 }
-                else
+                catch (Exception ex)
                 {
-                    foreach (var guild in AppSettings.Guilds.Where(g => g.Features.ServerAvailability))
-                        await _discordClient.PostToChannel(guild.Channels.GetValueOrDefault("general"), "Servers have gone offline! maybe? :3");
+                    log.Warning("Could not check {Region}/{Realm}: {Error}", realm.Key.Region, realm.Key.Slug, ex.Message);
+                    continue;
+                }
+
+                var cached = _repository.GetStatus(realm.Key.Region, realm.Key.Slug);
+                if (cached is not null && cached.Status == current.Status)
+                    continue;
+
+                _repository.SaveStatus(new RealmStatus(realm.Key.Region, realm.Key.Slug, current.Name, current.Status, DateTime.UtcNow));
+                if (cached is null)
+                    continue;
+
+                log.Information("{Region}/{Realm} status changed: {Old} -> {New}", realm.Key.Region, realm.Key.Slug, cached.Status, current.Status);
+                foreach (var guild in realm)
+                {
+                    var message = current.Status == "UP"
+                        ? $"Servers are back online! maybe? :3{BuildRoleMentions(guild.RoleIds)}"
+                        : "Servers have gone offline! maybe? :3";
+                    try
+                    {
+                        await _discordClient.PostToChannel(ulong.Parse(guild.ChannelId!), message);
+                    }
+                    catch (Exception ex)
+                    {
+                        log.Warning("Could not post server availability for {Guild}: {Error}", guild.GuildName, ex.Message);
+                    }
                 }
             }
-
-            return false;
         }
 
         private static string BuildRoleMentions(IEnumerable<string>? rolesToPing)
@@ -63,11 +77,5 @@ namespace DevClient
                 ? $" {string.Join(" ", mentions)}"
                 : string.Empty;
         }
-
     }
 }
-
-
-
-
-

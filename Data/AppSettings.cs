@@ -23,6 +23,10 @@ namespace DevClient.Data
         /// <summary>Hevy API key (<c>hevy:apiKey</c>, usually in the API's appsettings); empty turns Hevy sync off.</summary>
         public static string HevyApiKey { get; set; } = string.Empty;
         public static ulong HevyWorkoutChannelId { get; set; }
+        /// <summary>Discord webhook for Error/Fatal log alerts (<c>alerts:discordWebhookUrl</c>); empty turns alerts off.</summary>
+        public static string AlertsDiscordWebhookUrl { get; set; } = string.Empty;
+        /// <summary>Config <c>logFiles</c> (true/false); unset means log files locally and none in a container.</summary>
+        public static string? LogFiles { get; set; }
 
         public static void Initialize()
         {
@@ -58,6 +62,8 @@ namespace DevClient.Data
             RxpGuidesWatchThreadUrl = config.GetValue<string>("rxpGuidesWatch:threadUrl") ?? string.Empty;
             HevyApiKey = config.GetValue<string>("hevy:apiKey") ?? string.Empty;
             HevyWorkoutChannelId = config.GetValue<ulong>("hevy:workoutChannelId");
+            AlertsDiscordWebhookUrl = config.GetValue<string>("alerts:discordWebhookUrl") ?? string.Empty;
+            LogFiles = config.GetValue<string>("logFiles");
         }
 
         private static string ResolveApiSettingsPath(string? configuredPath)

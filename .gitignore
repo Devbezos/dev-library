@@ -9,3 +9,13 @@ obj/
 .vs/
 TestResults/
 *.nupkg
+
+# Secrets
+appsettings.json
+appsettings.*.json
+
+# Local build and scratch output
+build/
+tmpbuild/
+logs/
+*.log

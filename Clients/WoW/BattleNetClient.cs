@@ -1,9 +1,8 @@
 using DevClient.Data;
-using DevClient.Data.WoW.Blizzard;
 using DevClient.Data.WoW.Realms;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using System.ComponentModel;
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Text;
 
@@ -11,7 +10,9 @@ namespace DevClient.Clients
 {
     public class BattleNetClient : IBattleNetClient
     {
+        private static readonly TimeSpan RealmIndexLifetime = TimeSpan.FromHours(6);
         private readonly IHttpClientFactory _httpClientFactory;
+        private readonly ConcurrentDictionary<string, (DateTime FetchedAtUtc, IReadOnlyList<BattleNetRealm> Realms)> _realmIndex = new();
 
         public BattleNetClient(IHttpClientFactory httpClientFactory) => _httpClientFactory = httpClientFactory;
 
@@ -33,34 +34,37 @@ namespace DevClient.Clients
             return JsonConvert.DeserializeObject<BlizzardOAuthResponse>(response)!.AccessToken;
         }
 
-        public async Task<BlizzardRealmResponse> GetZuljinData()
+        public async Task<BattleNetRealmStatus> GetRealmStatus(string region, string realmSlug)
         {
             var token = await GetOAuthToken();
-            using var client = _httpClientFactory.CreateClient();
-            using var request = new HttpRequestMessage(new HttpMethod("GET"), AppSettings.BattleNet.ApiUrl + Constants.WoW.BattleNet.RealmDataEndpoint);
-            request.Headers.TryAddWithoutValidation("accept", "application/json");
-            request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {token}");
+            var realm = await GetJson(token, $"{ApiUrlFor(region)}/realm/{Uri.EscapeDataString(realmSlug)}?namespace=dynamic-{region}&locale=en_US");
+            var connectedRealmUrl = realm["connected_realm"]?["href"]?.ToString();
+            if (string.IsNullOrWhiteSpace(connectedRealmUrl))
+                throw new InvalidOperationException($"Battle.net returned no connected realm for {region}/{realmSlug}.");
 
-            using var httpResponse = await client.SendAsync(request);
-            var response = await httpResponse.Content.ReadAsStringAsync();
+            var connectedRealm = await GetJson(token, connectedRealmUrl + "&locale=en_US");
+            var status = connectedRealm["status"]?["type"]?.ToString().ToUpperInvariant();
+            if (string.IsNullOrWhiteSpace(status))
+                throw new InvalidOperationException($"Battle.net returned no status for {region}/{realmSlug}.");
 
-            return JsonConvert.DeserializeObject<BlizzardRealmResponse>(response)!;
+            return new BattleNetRealmStatus(realm["name"]?.ToString() ?? realmSlug, status == "UP" ? "UP" : "DOWN");
         }
 
-        public async Task<BlizzardRealmsResponse> GetRealms()
+        public async Task<IReadOnlyList<BattleNetRealm>> GetRealms(string region)
         {
+            if (_realmIndex.TryGetValue(region, out var cached) && DateTime.UtcNow - cached.FetchedAtUtc < RealmIndexLifetime)
+                return cached.Realms;
+
             var token = await GetOAuthToken();
-            using var client = _httpClientFactory.CreateClient();
-            using var request = new HttpRequestMessage(new HttpMethod("GET"), AppSettings.BattleNet.ApiUrl + Constants.WoW.BattleNet.AllRealmsEndpoint);
-            request.Headers.TryAddWithoutValidation("accept", "application/json");
-            request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {token}");
+            var index = await GetJson(token, $"{ApiUrlFor(region)}/realm/index?namespace=dynamic-{region}&locale=en_US");
+            var realms = (index["realms"] as JArray ?? [])
+                .Select(r => new BattleNetRealm(r["slug"]?.ToString() ?? string.Empty, r["name"]?.ToString() ?? string.Empty))
+                .Where(r => r.Slug.Length > 0 && r.Name.Length > 0)
+                .OrderBy(r => r.Name, StringComparer.InvariantCultureIgnoreCase)
+                .ToList();
 
-            using var httpResponse = await client.SendAsync(request);
-            var response = await httpResponse.Content.ReadAsStringAsync();
-
-            var realmList = JsonConvert.DeserializeObject<BlizzardRealmsResponse>(response);
-
-            return realmList!;
+            _realmIndex[region] = (DateTime.UtcNow, realms);
+            return realms;
         }
 
         public async Task<string> GetItemName(string itemId)
@@ -77,34 +81,20 @@ namespace DevClient.Clients
             return JsonConvert.DeserializeObject<JObject>(response)?["name"]?.ToString() ?? string.Empty;
         }
 
-        public async Task GetAuctions(BlizzardRealmsResponse realmData)
+        // The configured API URL is the US one (https://us.api.blizzard.com/data/wow); other regions swap the host.
+        private static string ApiUrlFor(string region) =>
+            AppSettings.BattleNet.ApiUrl.Replace("://us.", $"://{region}.", StringComparison.OrdinalIgnoreCase);
+
+        private async Task<JObject> GetJson(string token, string url)
         {
-            var token = await GetOAuthToken();
-            var rings = new List<Auction>();
+            using var client = _httpClientFactory.CreateClient();
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.TryAddWithoutValidation("accept", "application/json");
+            request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {token}");
 
-            foreach (var realm in realmData.ConnectedRealms)
-            {
-                using var client = _httpClientFactory.CreateClient();
-                using var request = new HttpRequestMessage(new HttpMethod("GET"), realm.Href + "/auctions?namespace=dynamic-us&locale=en_US");
-                request.Headers.TryAddWithoutValidation("accept", "application/json");
-                request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {token}");
-
-                using var httpResponse = await client.SendAsync(request);
-                var response = await httpResponse.Content.ReadAsStringAsync();
-
-                var auctions = JsonConvert.DeserializeObject<BlizzardAuctionResponse>(response)!;
-
-                rings.AddRange(auctions.Auctions.Where(a => a.Item?.Id == "238036" && a.Item?.BonusLists.Contains(10355) == true));
-
-            }
-
-
-            Console.ReadLine();
-            // return JsonConvert.DeserializeObject<>(response)["name"].ToString();
+            using var httpResponse = await client.SendAsync(request);
+            httpResponse.EnsureSuccessStatusCode();
+            return JObject.Parse(await httpResponse.Content.ReadAsStringAsync());
         }
     }
 }
-
-
-
-
