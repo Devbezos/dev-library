@@ -39,6 +39,9 @@ public class HevyClient : IHevyApi
     public Task<HevyWorkoutsPage> GetWorkouts(int page, CancellationToken ct = default) =>
         Get<HevyWorkoutsPage>($"workouts?page={page}&pageSize={PageSize}", ct);
 
+    public Task<HevyWorkout> GetWorkout(string workoutId, CancellationToken ct = default) =>
+        Get<HevyWorkout>($"workouts/{Uri.EscapeDataString(workoutId)}", ct);
+
     /// <summary>Workouts updated or deleted since <paramref name="sinceUtc"/>, oldest page first.</summary>
     public Task<HevyWorkoutEventsPage> GetWorkoutEvents(DateTime sinceUtc, int page, CancellationToken ct = default) =>
         Get<HevyWorkoutEventsPage>($"workouts/events?page={page}&pageSize={PageSize}&since={Uri.EscapeDataString(sinceUtc.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"))}", ct);

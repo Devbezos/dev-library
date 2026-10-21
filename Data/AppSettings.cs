@@ -22,6 +22,7 @@ namespace DevClient.Data
         public static string RxpGuidesWatchThreadUrl { get; set; } = string.Empty;
         /// <summary>Hevy API key (<c>hevy:apiKey</c>, usually in the API's appsettings); empty turns Hevy sync off.</summary>
         public static string HevyApiKey { get; set; } = string.Empty;
+        public static ulong HevyWorkoutChannelId { get; set; }
 
         public static void Initialize()
         {
@@ -56,6 +57,7 @@ namespace DevClient.Data
             FitnessWeightSheet = config.GetSection("fitnessWeightSheet").Get<FitnessWeightSheetSettings>() ?? new FitnessWeightSheetSettings();
             RxpGuidesWatchThreadUrl = config.GetValue<string>("rxpGuidesWatch:threadUrl") ?? string.Empty;
             HevyApiKey = config.GetValue<string>("hevy:apiKey") ?? string.Empty;
+            HevyWorkoutChannelId = config.GetValue<ulong>("hevy:workoutChannelId");
         }
 
         private static string ResolveApiSettingsPath(string? configuredPath)
