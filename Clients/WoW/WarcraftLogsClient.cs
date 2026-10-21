@@ -31,12 +31,11 @@ namespace DevClient.Clients
 
             var base64Auth = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{settings.ClientId}:{settings.ClientSecret}"));
 
-            using var client = new HttpClient();
             using var request = new HttpRequestMessage(HttpMethod.Post, Constants.WoW.WarcraftLogs.TokenUrl);
             request.Headers.TryAddWithoutValidation("Authorization", $"Basic {base64Auth}");
             request.Content = new StringContent("grant_type=client_credentials", Encoding.UTF8, "application/x-www-form-urlencoded");
 
-            var response = await client.SendAsync(request);
+            using var response = await SharedHttp.Client.SendAsync(request);
             response.EnsureSuccessStatusCode();
             var json = await response.Content.ReadAsStringAsync();
             var tokenResponse = JsonConvert.DeserializeObject<WarcraftLogsOAuthResponse>(json)!;
@@ -63,7 +62,8 @@ namespace DevClient.Clients
 
                 var characterArg = characterId.HasValue
                     ? $"id: {characterId.Value}"
-                    : $"name: \"{characterName}\", serverSlug: \"{realm}\", serverRegion: \"{region}\"";
+                    // JSON string encoding is valid GraphQL string syntax, so a quote in a name can't change the query.
+                    : $"name: {JsonConvert.ToString(characterName)}, serverSlug: {JsonConvert.ToString(realm)}, serverRegion: {JsonConvert.ToString(region)}";
 
                 var query = $$"""
                     {
@@ -76,16 +76,11 @@ namespace DevClient.Clients
                     }
                     """;
 
-                using var client = new HttpClient();
-                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-
                 var payload = JsonConvert.SerializeObject(new { query });
-                using var request = new HttpRequestMessage(HttpMethod.Post, Constants.WoW.WarcraftLogs.ApiUrl)
-                {
-                    Content = new StringContent(payload, Encoding.UTF8, "application/json")
-                };
+                using var request = SharedHttp.Bearer(HttpMethod.Post, Constants.WoW.WarcraftLogs.ApiUrl, token,
+                    new StringContent(payload, Encoding.UTF8, "application/json"));
 
-                var response = await client.SendAsync(request);
+                using var response = await SharedHttp.Client.SendAsync(request);
                 response.EnsureSuccessStatusCode();
                 var json = await response.Content.ReadAsStringAsync();
 
@@ -245,16 +240,11 @@ namespace DevClient.Clients
         {
             var token = await GetOAuthToken();
 
-            using var client = new HttpClient();
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-
             var payload = JsonConvert.SerializeObject(new { query, variables });
-            using var request = new HttpRequestMessage(HttpMethod.Post, Constants.WoW.WarcraftLogs.ApiUrl)
-            {
-                Content = new StringContent(payload, Encoding.UTF8, "application/json")
-            };
+            using var request = SharedHttp.Bearer(HttpMethod.Post, Constants.WoW.WarcraftLogs.ApiUrl, token,
+                new StringContent(payload, Encoding.UTF8, "application/json"));
 
-            var response = await client.SendAsync(request);
+            using var response = await SharedHttp.Client.SendAsync(request);
             response.EnsureSuccessStatusCode();
             var jObject = JObject.Parse(await response.Content.ReadAsStringAsync());
 

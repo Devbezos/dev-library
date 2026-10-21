@@ -36,8 +36,6 @@ namespace DevClient.Clients.Fitness
         public async Task<List<GoogleCalendarEvent>> GetEvents(DateTime fromUtc, DateTime toUtc)
         {
             var token = await _auth.GetAccessToken();
-            using var client = new HttpClient();
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
             var events = new List<GoogleCalendarEvent>();
             string? pageToken = null;
@@ -51,7 +49,8 @@ namespace DevClient.Clients.Fitness
                     "&singleEvents=false&maxResults=250&eventTypes=default&eventTypes=fromGmail" +
                     (pageToken is null ? "" : $"&pageToken={Uri.EscapeDataString(pageToken)}");
 
-                using var response = await client.GetAsync(url);
+                using var request = SharedHttp.Bearer(HttpMethod.Get, url, token);
+                using var response = await SharedHttp.Client.SendAsync(request);
                 var json = await response.Content.ReadAsStringAsync();
                 if (!response.IsSuccessStatusCode)
                     throw new GoogleCalendarException((int)response.StatusCode == 403

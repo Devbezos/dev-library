@@ -54,8 +54,7 @@ namespace DevClient.Clients.Fitness
         {
             Log.Information("GoogleHealthClient: Refreshing access token");
 
-            using var client = new HttpClient();
-            var content = new FormUrlEncodedContent(new Dictionary<string, string>
+            using var content = new FormUrlEncodedContent(new Dictionary<string, string>
             {
                 ["client_id"] = _settings.ClientId,
                 ["client_secret"] = _settings.ClientSecret,
@@ -63,7 +62,7 @@ namespace DevClient.Clients.Fitness
                 ["grant_type"] = "refresh_token"
             });
 
-            var response = await client.PostAsync(Constants.GoogleHealth.TokenUrl, content);
+            using var response = await SharedHttp.Client.PostAsync(Constants.GoogleHealth.TokenUrl, content);
             var json = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
@@ -80,10 +79,6 @@ namespace DevClient.Clients.Fitness
         {
             var token = await GetAccessToken();
 
-            using var client = new HttpClient();
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-
             var url = $"{Constants.GoogleHealth.BaseUrl}/users/me/dataTypes/{dataType}/dataPoints";
             var queryParts = new List<string>();
             if (filter != null) queryParts.Add($"filter={filter}");
@@ -94,7 +89,8 @@ namespace DevClient.Clients.Fitness
             // so a passing failure doesn't come back as "no data".
             for (var attempt = 1; ; attempt++)
             {
-                using var response = await client.GetAsync(url);
+                using var request = SharedHttp.Bearer(HttpMethod.Get, url, token);
+                using var response = await SharedHttp.Client.SendAsync(request);
                 var json = await response.Content.ReadAsStringAsync();
                 if (response.IsSuccessStatusCode)
                     return json;
@@ -210,10 +206,9 @@ namespace DevClient.Clients.Fitness
         private async Task<string?> PostRaw(string path, object body)
         {
             var token = await GetAccessToken();
-            using var client = new HttpClient();
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            var content = new StringContent(JsonConvert.SerializeObject(body), System.Text.Encoding.UTF8, "application/json");
-            var response = await client.PostAsync($"{Constants.GoogleHealth.BaseUrl}/{path}", content);
+            using var request = SharedHttp.Bearer(HttpMethod.Post, $"{Constants.GoogleHealth.BaseUrl}/{path}", token,
+                new StringContent(JsonConvert.SerializeObject(body), System.Text.Encoding.UTF8, "application/json"));
+            using var response = await SharedHttp.Client.SendAsync(request);
             var json = await response.Content.ReadAsStringAsync();
             if (!response.IsSuccessStatusCode)
             {
