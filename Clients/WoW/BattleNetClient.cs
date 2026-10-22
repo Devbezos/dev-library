@@ -8,18 +8,26 @@ using System.Text;
 
 namespace DevClient.Clients
 {
+    /// <summary>
+    /// Battle.net's game data API. The realm index is kept <see cref="RealmIndexLifetime"/>; a realm's connected-realm link
+    /// and item names (static data) a day in <see cref="ApiResponseCache"/>. Realm status is never cached: the server
+    /// availability check is there to see it change.
+    /// </summary>
     public class BattleNetClient : IBattleNetClient
     {
         private static readonly TimeSpan RealmIndexLifetime = TimeSpan.FromHours(6);
+        public static readonly TimeSpan StaticTtl = TimeSpan.FromDays(1);
         private readonly RestClient _http;
         private readonly BattleNetSettings? _settings;
+        private readonly ApiResponseCache _cache;
         private readonly ConcurrentDictionary<string, (DateTime FetchedAtUtc, IReadOnlyList<BattleNetRealm> Realms)> _realmIndex = new();
 
         /// <param name="settings">The API passes its own config; without it the bot's static <see cref="AppSettings"/> are used.</param>
-        public BattleNetClient(RestClient? http = null, BattleNetSettings? settings = null)
+        public BattleNetClient(RestClient? http = null, BattleNetSettings? settings = null, ApiResponseCache? cache = null)
         {
             _http = http ?? SharedHttp.Client;
             _settings = settings;
+            _cache = cache ?? ApiResponseCache.Shared;
         }
 
         private BattleNetSettings Settings => _settings ?? AppSettings.BattleNet;
@@ -39,7 +47,9 @@ namespace DevClient.Clients
         public async Task<BattleNetRealmStatus> GetRealmStatus(string region, string realmSlug)
         {
             var token = await GetOAuthToken();
-            var realm = await GetJson(token, $"{ApiUrlFor(region)}/realm/{Uri.EscapeDataString(realmSlug)}?namespace=dynamic-{region}&locale=en_US");
+            var realmUrl = $"{ApiUrlFor(region)}/realm/{Uri.EscapeDataString(realmSlug)}?namespace=dynamic-{region}&locale=en_US";
+            var realm = JObject.Parse(await _cache.GetOrFetch("bnet:" + realmUrl.ToLowerInvariant(), StaticTtl,
+                async () => (await GetJson(token, realmUrl)).ToString(Formatting.None)));
             var connectedRealmUrl = realm["connected_realm"]?["href"]?.ToString();
             if (string.IsNullOrWhiteSpace(connectedRealmUrl))
                 throw new InvalidOperationException($"Battle.net returned no connected realm for {region}/{realmSlug}.");
@@ -71,14 +81,20 @@ namespace DevClient.Clients
 
         public async Task<string> GetItemName(string itemId)
         {
-            var token = await GetOAuthToken();
-            var request = new RestRequest(string.Format(Settings.ApiUrl + Constants.WoW.BattleNet.ItemNameEndpoint, itemId))
-                .AddHeader("accept", "application/json")
-                .AddHeader("Authorization", $"Bearer {token}");
+            var url = string.Format(Settings.ApiUrl + Constants.WoW.BattleNet.ItemNameEndpoint, itemId);
+            // An empty name (an unknown item or a failed call) isn't kept.
+            return await _cache.GetOrFetch("bnet:" + url.ToLowerInvariant(), async () =>
+            {
+                var token = await GetOAuthToken();
+                var request = new RestRequest(url)
+                    .AddHeader("accept", "application/json")
+                    .AddHeader("Authorization", $"Bearer {token}");
 
-            var httpResponse = await _http.SendAsync(request);
-
-            return JsonConvert.DeserializeObject<JObject>(httpResponse.Content ?? string.Empty)?["name"]?.ToString() ?? string.Empty;
+                var httpResponse = await _http.SendAsync(request);
+                return httpResponse.IsSuccessStatusCode
+                    ? JsonConvert.DeserializeObject<JObject>(httpResponse.Content ?? string.Empty)?["name"]?.ToString() ?? string.Empty
+                    : string.Empty;
+            }, name => name.Length > 0 ? StaticTtl : TimeSpan.Zero);
         }
 
         // The configured API URL is the US one (https://us.api.blizzard.com/data/wow); other regions swap the host.

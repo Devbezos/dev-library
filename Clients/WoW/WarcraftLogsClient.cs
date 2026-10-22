@@ -9,15 +9,42 @@ using System.Text.RegularExpressions;
 
 namespace DevClient.Clients
 {
+    /// <summary>
+    /// Warcraft Logs' GraphQL API. Rankings and guild report lists are cached (<see cref="ApiResponseCache"/>) for
+    /// <see cref="ListTtl"/>, a report's fights per <see cref="ReportTtl"/>; cache keys carry the client id, so answers
+    /// fetched with someone's own keys stay theirs. <see cref="QueryAsync"/> is not cached; its callers cache what they read.
+    /// </summary>
     public class WarcraftLogsClient : IWarcraftLogsClient
     {
+        public static readonly TimeSpan ListTtl = TimeSpan.FromMinutes(5);
+        public static readonly TimeSpan MissingTtl = TimeSpan.FromMinutes(2);
+        /// <summary>How long a report keeps a live log's answers; it can still grow while it's being uploaded.</summary>
+        public static readonly TimeSpan LiveReportTtl = TimeSpan.FromMinutes(1);
+        public static readonly TimeSpan FinishedReportTtl = TimeSpan.FromDays(1);
+        /// <summary>A report whose last event is older than this is taken as finished (logging stopped).</summary>
+        public static readonly TimeSpan FinishedAfter = TimeSpan.FromHours(2);
+
         // Per client id: the dashboard can use someone's own Warcraft Logs keys, which get their own token.
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Token, DateTime Expiry)> Tokens = new();
 
         private readonly WarcraftLogsSettings? _settings;
+        private readonly ApiResponseCache _cache;
 
         /// <param name="settings">Explicit settings (dev-api binds these from IConfiguration); falls back to AppSettings.WarcraftLogs.</param>
-        public WarcraftLogsClient(WarcraftLogsSettings? settings = null) => _settings = settings;
+        public WarcraftLogsClient(WarcraftLogsSettings? settings = null, ApiResponseCache? cache = null)
+        {
+            _settings = settings;
+            _cache = cache ?? ApiResponseCache.Shared;
+        }
+
+        /// <summary>
+        /// How long to keep an answer about a report whose last event was at <paramref name="endTimeMs"/> (Unix ms):
+        /// a day once it's finished, a minute while it may still be live or when the end time is unknown.
+        /// </summary>
+        public static TimeSpan ReportTtl(long? endTimeMs, DateTimeOffset? now = null) =>
+            endTimeMs is > 0 && (now ?? DateTimeOffset.UtcNow) - DateTimeOffset.FromUnixTimeMilliseconds(endTimeMs.Value) > FinishedAfter
+                ? FinishedReportTtl
+                : LiveReportTtl;
 
         private WarcraftLogsSettings Settings =>
             _settings ?? AppSettings.WarcraftLogs
@@ -76,11 +103,13 @@ namespace DevClient.Clients
                     }
                     """;
 
-                var request = SharedHttp.Bearer(Method.Post, Constants.WoW.WarcraftLogs.ApiUrl, token).AddJsonBody(new { query });
-
-                var response = await SharedHttp.Client.SendAsync(request);
-                response.EnsureSuccessStatusCode();
-                var json = response.Content ?? string.Empty;
+                var json = await _cache.GetOrFetch($"wcl:{Settings.ClientId}:{query}", ListTtl, async () =>
+                {
+                    var request = SharedHttp.Bearer(Method.Post, Constants.WoW.WarcraftLogs.ApiUrl, token).AddJsonBody(new { query });
+                    var response = await SharedHttp.Client.SendAsync(request);
+                    response.EnsureSuccessStatusCode();
+                    return response.Content ?? string.Empty;
+                });
 
                 var jObject = JObject.Parse(json);
                 var characterNode = jObject["data"]?["characterData"]?["character"];
@@ -164,7 +193,7 @@ namespace DevClient.Clients
                 region = region.Trim().ToLowerInvariant(),
                 page = Math.Max(1, page),
                 limit = Math.Clamp(limit, 1, 100),
-            });
+            }, _ => ListTtl);
 
             return data["reportData"]?["reports"]?.ToObject<WarcraftLogsReportPage>() ?? new WarcraftLogsReportPage();
         }
@@ -204,7 +233,9 @@ namespace DevClient.Clients
                 }
                 """;
 
-            var data = await PostQuery(query, new { code });
+            var data = await PostQuery(query, new { code }, data => data["reportData"]?["report"] is { Type: JTokenType.Object } report
+                ? ReportTtl(report["endTime"]?.Value<long?>())
+                : MissingTtl);
 
             return data["reportData"]?["report"]?.ToObject<WarcraftLogsReport>()
                 ?? throw new WarcraftLogsApiException("This report does not exist.");
@@ -234,7 +265,17 @@ namespace DevClient.Clients
 
         public Task<JToken> QueryAsync(string query, object? variables = null) => PostQuery(query, variables ?? new { });
 
-        private async Task<JToken> PostQuery(string query, object variables)
+        // With ttl, the data object is kept (by client id, query and variables) for as long as ttl says; errors never are.
+        private async Task<JToken> PostQuery(string query, object variables, Func<JToken, TimeSpan>? ttl = null)
+        {
+            if (ttl is null) return await Send(query, variables);
+            var json = await _cache.GetOrFetch($"wcl:{Settings.ClientId}:{query}:{JsonConvert.SerializeObject(variables)}",
+                async () => (await Send(query, variables)).ToString(Formatting.None),
+                body => ttl(JToken.Parse(body)));
+            return JToken.Parse(json);
+        }
+
+        private async Task<JToken> Send(string query, object variables)
         {
             var token = await GetOAuthToken();
 

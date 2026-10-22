@@ -30,9 +30,31 @@ namespace DevClient.Clients
             public string CharacterId { get; set; } = string.Empty;
         }
 
-        private readonly RestClient _http;
+        /// <summary>A Droptimizer report never changes once it's done.</summary>
+        public static readonly TimeSpan ReportTtl = TimeSpan.FromDays(1);
+        public static readonly TimeSpan ScheduleTtl = TimeSpan.FromMinutes(5);
+        public static readonly TimeSpan RosterTtl = TimeSpan.FromMinutes(2);
 
-        public WoWUtilsClient(RestClient? http = null) => _http = http ?? SharedHttp.Client;
+        private readonly RestClient _http;
+        private readonly ApiResponseCache _cache;
+
+        /// <summary>Reads are cached (<see cref="ApiResponseCache"/>) per group and API key; imports and tracking never are.</summary>
+        public WoWUtilsClient(RestClient? http = null, ApiResponseCache? cache = null)
+        {
+            _http = http ?? SharedHttp.Client;
+            _cache = cache ?? ApiResponseCache.Shared;
+        }
+
+        // A group's data is private to its API key, so the key's fingerprint is part of the cache key.
+        private Task<string> CachedGet(string kind, string url, string apiKey, TimeSpan ttl, string failure) =>
+            _cache.GetOrFetch(CacheKey(kind, url, apiKey), ttl, async () =>
+            {
+                var response = await _http.SendAsync(BuildRequest(url, apiKey));
+                var responseJson = response.Content ?? string.Empty;
+                if (!response.IsSuccessStatusCode)
+                    throw CreateApiException($"{failure} ({(int)response.StatusCode}): {responseJson}", response.StatusCode, responseJson);
+                return responseJson;
+            });
 
         private static readonly string[] _wowClasses =
         [
@@ -43,9 +65,10 @@ namespace DevClient.Clients
         public async Task<WoWUtilsFetchResponse> GetDroptimizerReport(string reportId)
         {
             Log.Information("WoWUtilsClient.GetDroptimizerReport: START {ReportId}", reportId);
-            var response = await _http.SendAsync(BuildRequest(
-                $"{Constants.WoW.WoWUtils.BaseUrl}/api/droptimizer/fetch?reportId={reportId}&file=report"));
-            var result = JsonConvert.DeserializeObject<WoWUtilsFetchResponse>(response.EnsureSuccessStatusCode().Content ?? string.Empty);
+            var url = $"{Constants.WoW.WoWUtils.BaseUrl}/api/droptimizer/fetch?reportId={reportId}&file=report";
+            var body = await _cache.GetOrFetch("wowutils:report:" + url, ReportTtl, async () =>
+                (await _http.SendAsync(BuildRequest(url))).EnsureSuccessStatusCode().Content ?? string.Empty);
+            var result = JsonConvert.DeserializeObject<WoWUtilsFetchResponse>(body);
             Log.Information("WoWUtilsClient.GetDroptimizerReport: END");
             return result!;
         }
@@ -60,16 +83,8 @@ namespace DevClient.Clients
                 throw new InvalidOperationException("WoW Utils groupId is required for roster sync");
 
             Log.Information("WoWUtilsClient.GetRosterMembers: START {GroupId}", groupId);
-            var response = await _http.SendAsync(BuildRequest($"{Constants.WoW.WoWUtils.BaseUrl}/v1/groups/{groupId}/roster", apiKey));
-            var responseJson = response.Content ?? string.Empty;
-
-            if (!response.IsSuccessStatusCode)
-            {
-                throw CreateApiException(
-                    $"WoW Utils roster fetch failed ({(int)response.StatusCode}): {responseJson}",
-                    response.StatusCode,
-                    responseJson);
-            }
+            var responseJson = await CachedGet("roster", RosterUrl(groupId), apiKey,
+                RosterTtl, "WoW Utils roster fetch failed");
 
             var members = ParseRosterMembers(responseJson);
             Log.Information("WoWUtilsClient.GetRosterMembers: END {Count}", members.Count);
@@ -82,16 +97,8 @@ namespace DevClient.Clients
                 throw new InvalidOperationException("WoW Utils groupId is required for raid schedule");
 
             Log.Information("WoWUtilsClient.GetRaidSchedule: START {GroupId}", groupId);
-            var response = await _http.SendAsync(BuildRequest($"{Constants.WoW.WoWUtils.BaseUrl}/v1/groups/{groupId}/calendar-events", apiKey));
-            var responseJson = response.Content ?? string.Empty;
-
-            if (!response.IsSuccessStatusCode)
-            {
-                throw CreateApiException(
-                    $"WoW Utils raid schedule fetch failed ({(int)response.StatusCode}): {responseJson}",
-                    response.StatusCode,
-                    responseJson);
-            }
+            var responseJson = await CachedGet("schedule", $"{Constants.WoW.WoWUtils.BaseUrl}/v1/groups/{groupId}/calendar-events", apiKey,
+                ScheduleTtl, "WoW Utils raid schedule fetch failed");
 
             var raids = ParseRaidSchedule(responseJson);
             Log.Information("WoWUtilsClient.GetRaidSchedule: END {Count}", raids.Count);
@@ -228,7 +235,12 @@ namespace DevClient.Clients
             if (!response.IsSuccessStatusCode)
                 throw new InvalidOperationException(
                     $"WoW Utils character tracking failed for {characterId} ({(int)response.StatusCode}): {responseBody}");
+            _cache.Remove(CacheKey("roster", RosterUrl(groupId), apiKey));
         }
+
+        private static string RosterUrl(string groupId) => $"{Constants.WoW.WoWUtils.BaseUrl}/v1/groups/{groupId}/roster";
+
+        private static string CacheKey(string kind, string url, string apiKey) => $"wowutils:{kind}:{url}:{ApiResponseCache.Fingerprint(apiKey)}";
 
         // GET /v1/groups/{groupId}/roster returns one entry per *person* (a raider),
         // each carrying that person's rank/mainRole plus a `characters` array (their

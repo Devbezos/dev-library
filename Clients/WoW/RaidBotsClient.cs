@@ -23,12 +23,30 @@ namespace DevClient.Clients
             }
         });
 
-        private readonly IBattleNetClient _battleNetClient;
+        /// <summary>A finished Raidbots report never changes.</summary>
+        public static readonly TimeSpan ReportTtl = TimeSpan.FromDays(1);
 
-        public RaidBotsClient(IBattleNetClient battleNetClient)
+        private readonly IBattleNetClient _battleNetClient;
+        private readonly ApiResponseCache _cache;
+
+        public RaidBotsClient(IBattleNetClient battleNetClient, ApiResponseCache? cache = null)
         {
             _battleNetClient = battleNetClient;
+            _cache = cache ?? ApiResponseCache.Shared;
         }
+
+        // A report file's text, kept a day; a failed fetch throws and isn't kept.
+        private Task<string> GetReportFile(string url) =>
+            _cache.GetOrFetch("raidbots:" + url, ReportTtl, async () =>
+            {
+                var response = await Http.SendAsync(new RestRequest(url).AddHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"));
+                if (!response.IsSuccessStatusCode)
+                {
+                    Log.Warning("RaidBotsClient: HTTP {StatusCode}", response.StatusCode);
+                    throw new HttpRequestException($"Raidbots returned {(int)response.StatusCode}.", null, response.StatusCode);
+                }
+                return response.Content ?? string.Empty;
+            });
 
 
         public async Task<bool> IsValidReport(string url)
@@ -39,16 +57,7 @@ namespace DevClient.Clients
 
             try
             {
-                var response = await Http.SendAsync(new RestRequest(url).AddHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"));
-
-                if (response.IsSuccessStatusCode)
-                {
-                    content = response.Content ?? string.Empty;
-                }
-                else
-                {
-                    Log.Warning("RaidBotsClient.IsValidReport: HTTP {StatusCode}", response.StatusCode);
-                }
+                content = await GetReportFile(url);
             }
             catch (Exception ex)
             {
@@ -76,17 +85,7 @@ namespace DevClient.Clients
 
             try
             {
-                var response = await Http.SendAsync(new RestRequest(url).AddHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"));
-
-                if (response.IsSuccessStatusCode)
-                {
-                    content = response.Content ?? string.Empty;
-                    // Log.Debug(content);
-                }
-                else
-                {
-                    Log.Warning("RaidBotsClient.GetItemUpgrades: HTTP {StatusCode}", response.StatusCode);
-                }
+                content = await GetReportFile(url);
             }
             catch (Exception ex)
             {

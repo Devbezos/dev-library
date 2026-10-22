@@ -20,7 +20,17 @@ namespace DevClient.Clients
 
         private readonly RestClient _http;
 
-        public WoWAuditClient(RestClient? http = null) => _http = http ?? SharedHttp.Client;
+        private readonly ApiResponseCache _cache;
+
+        /// <summary>
+        /// The raid schedule is cached (<see cref="ApiResponseCache"/>) per guild token; the character list isn't, since it's
+        /// read straight after this client tracks and untracks characters.
+        /// </summary>
+        public WoWAuditClient(RestClient? http = null, ApiResponseCache? cache = null)
+        {
+            _http = http ?? SharedHttp.Client;
+            _cache = cache ?? ApiResponseCache.Shared;
+        }
 
         public Task<List<WoWAuditCharacter>> GetCharacters(string guild) =>
             GetCharacters(guild, GetGuildToken(guild));
@@ -53,9 +63,13 @@ namespace DevClient.Clients
         public async Task<IReadOnlyList<RaidScheduleEvent>> GetRaidSchedule(string guild, string token)
         {
             Log.Information("WoWAuditClient.GetRaidSchedule: START {Guild}", guild);
-            var httpResponse = await _http.SendAsync(CreateAuthorizedRequest(token, Method.Get, $"{Constants.WoW.WoWAudit.Url}/raids"));
-            var response = httpResponse.Content ?? string.Empty;
-            httpResponse.EnsureSuccessStatusCode();
+            var response = await _cache.GetOrFetch($"wowaudit:raids:{ApiResponseCache.Fingerprint(token)}", WoWUtilsClient.ScheduleTtl, async () =>
+            {
+                var httpResponse = await _http.SendAsync(CreateAuthorizedRequest(token, Method.Get, $"{Constants.WoW.WoWAudit.Url}/raids"));
+                var content = httpResponse.Content ?? string.Empty;
+                httpResponse.EnsureSuccessStatusCode();
+                return content;
+            });
 
             var raids = ParseRaidSchedule(response);
             Log.Information("WoWAuditClient.GetRaidSchedule: END {Count}", raids.Count);
