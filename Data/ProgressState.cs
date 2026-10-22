@@ -71,7 +71,6 @@ public sealed class ProgressDailyNote
 
 public interface IProgressRepository
 {
-    void EnsureTable();
     void EnsureDefault(ProgressState state);
     ProgressState Get();
     void Save(ProgressState state);

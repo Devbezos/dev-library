@@ -14,7 +14,6 @@ namespace DevClient.Data
 
     public interface ITcgRepository
     {
-        void EnsureTable();
         void SaveResults(DateTime runAt, List<Search> results, string game = "pokemon");
         List<TcgResult> GetLatestRun(string game = "pokemon");
     }

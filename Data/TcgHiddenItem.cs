@@ -11,7 +11,6 @@ namespace DevClient.Data
 
     public interface ITcgHiddenItemRepository
     {
-        void EnsureTable();
         List<TcgHiddenItem> GetAll(string? game = null);
         void Hide(string game, string store, string productName);
         void Unhide(string game, string store, string productName);

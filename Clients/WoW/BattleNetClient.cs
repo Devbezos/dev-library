@@ -12,15 +12,22 @@ namespace DevClient.Clients
     {
         private static readonly TimeSpan RealmIndexLifetime = TimeSpan.FromHours(6);
         private readonly RestClient _http;
+        private readonly BattleNetSettings? _settings;
         private readonly ConcurrentDictionary<string, (DateTime FetchedAtUtc, IReadOnlyList<BattleNetRealm> Realms)> _realmIndex = new();
 
-        public BattleNetClient(RestClient? http = null) => _http = http ?? SharedHttp.Client;
+        /// <param name="settings">The API passes its own config; without it the bot's static <see cref="AppSettings"/> are used.</param>
+        public BattleNetClient(RestClient? http = null, BattleNetSettings? settings = null)
+        {
+            _http = http ?? SharedHttp.Client;
+            _settings = settings;
+        }
 
+        private BattleNetSettings Settings => _settings ?? AppSettings.BattleNet;
 
         public async Task<string> GetOAuthToken()
         {
-            var base64authorization = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{AppSettings.BattleNet.ClientId}:{AppSettings.BattleNet.ClientSecret}"));
-            var request = new RestRequest(AppSettings.BattleNet.TokenUrl, Method.Post)
+            var base64authorization = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{Settings.ClientId}:{Settings.ClientSecret}"));
+            var request = new RestRequest(Settings.TokenUrl, Method.Post)
                 .AddHeader("Authorization", $"Basic {base64authorization}")
                 .AddParameter("grant_type", "client_credentials");
 
@@ -65,7 +72,7 @@ namespace DevClient.Clients
         public async Task<string> GetItemName(string itemId)
         {
             var token = await GetOAuthToken();
-            var request = new RestRequest(string.Format(AppSettings.BattleNet.ApiUrl + Constants.WoW.BattleNet.ItemNameEndpoint, itemId))
+            var request = new RestRequest(string.Format(Settings.ApiUrl + Constants.WoW.BattleNet.ItemNameEndpoint, itemId))
                 .AddHeader("accept", "application/json")
                 .AddHeader("Authorization", $"Bearer {token}");
 
@@ -75,8 +82,8 @@ namespace DevClient.Clients
         }
 
         // The configured API URL is the US one (https://us.api.blizzard.com/data/wow); other regions swap the host.
-        private static string ApiUrlFor(string region) =>
-            AppSettings.BattleNet.ApiUrl.Replace("://us.", $"://{region}.", StringComparison.OrdinalIgnoreCase);
+        private string ApiUrlFor(string region) =>
+            Settings.ApiUrl.Replace("://us.", $"://{region}.", StringComparison.OrdinalIgnoreCase);
 
         private async Task<JObject> GetJson(string token, string url)
         {

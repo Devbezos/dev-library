@@ -12,7 +12,6 @@ namespace DevClient.Data
 
     public interface ITcgProductGroupRepository
     {
-        void EnsureTable();
         List<TcgProductGroup> GetAll(string? game = null);
         void SetMarketPrices(string game, string groupKey, string displayName, decimal? resaleMarketPrice);
     }

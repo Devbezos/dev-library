@@ -20,7 +20,8 @@ public sealed record RxpGuidesWatch(
 
 public interface IRxpGuidesWatchRepository
 {
-    void EnsureTable(string defaultThreadUrl);
+    /// <summary>Adds the settings row with the configured thread URL if there isn't one yet.</summary>
+    void EnsureDefault(string defaultThreadUrl);
     RxpGuidesWatch Get();
     void UpdateSettings(string threadUrl, ulong channelId);
     void RecordChanged(string f2hUrl, string fileName, string sha256, long sizeBytes, string? postText, DateTime checkedAtUtc);

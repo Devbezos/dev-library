@@ -11,7 +11,6 @@ namespace DevClient.Data.WoW.WarcraftLogs
 
     public interface IWarcraftLogsWipeReasonRepository
     {
-        void EnsureTable();
         List<WarcraftLogsWipeReason> GetForReports(IEnumerable<string> reportCodes);
 
         /// <summary>Saves the reason for a pull; a blank reason removes it.</summary>

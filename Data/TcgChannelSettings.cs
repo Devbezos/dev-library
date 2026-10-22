@@ -4,7 +4,6 @@ namespace DevClient.Data
 
     public interface ITcgChannelSettingsRepository
     {
-        void EnsureTable();
         ulong GetChannelId(string game);
         ulong[] GetChannelIds(string game);
         ulong[] GetNotificationUserIds(string game);

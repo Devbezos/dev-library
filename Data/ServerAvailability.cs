@@ -18,7 +18,6 @@ public sealed record RealmStatus(string Region, string RealmSlug, string RealmNa
 
 public interface IServerAvailabilityRepository
 {
-    void EnsureTables();
     /// <summary>The guild's settings, or a disabled empty one when nothing is saved.</summary>
     GuildServerAvailability Get(string guildName);
     /// <summary>Saves the settings and sets the guild's ServerAvailability feature flag to Enabled.</summary>

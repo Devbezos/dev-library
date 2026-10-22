@@ -2,7 +2,6 @@ namespace DevClient.Data.Fitness
 {
     public interface IFitnessRepository
     {
-        void EnsureTable();
         void EnsureUsersTable(GoogleHealthUserSettings[] users);
         void LogPost(string username, string postType);
         GoogleHealthUserSettings[] GetGoogleHealthSettings();

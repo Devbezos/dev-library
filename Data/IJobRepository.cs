@@ -2,7 +2,8 @@ namespace DevClient.Data
 {
     public interface IJobRepository
     {
-        void EnsureTable();
+        /// <summary>Adds any default job that has no row yet; existing rows keep their settings.</summary>
+        void EnsureDefaults();
         List<ScheduledJob> GetAll();
         void Update(ScheduledJob job);
         void MarkRan(string name);

@@ -14,7 +14,6 @@ namespace DevClient.Data
 
     public interface ITcgSourceUrlRepository
     {
-        void EnsureTable();
         List<TcgSourceUrl> GetAll(string? game = null, string? store = null, bool enabledOnly = false);
         int Add(TcgSourceUrl sourceUrl);
         void UpdateUrl(int id, string url);

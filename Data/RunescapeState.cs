@@ -165,7 +165,6 @@ public sealed class RunescapeBossGoal
 
 public interface IRunescapeProgressRepository
 {
-    void EnsureTable();
     void EnsureDefault(RunescapeState state);
     RunescapeState Get();
     void Save(RunescapeState state);

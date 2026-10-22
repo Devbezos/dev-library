@@ -155,14 +155,14 @@ namespace DevClient.Data
         // Explicit JsonPropertyName: System.Text.Json's default camelCase policy only
         // lowercases a single leading capital, so "WoWAuditToken" would otherwise
         // serialize as "woWAuditToken" instead of the "wowAuditToken" the dev-ui
-        // types expect.
-        [JsonPropertyName("wowAuditToken")]
+        // types expect. JsonProperty does the same for Newtonsoft (DevApiClient).
+        [JsonPropertyName("wowAuditToken"), Newtonsoft.Json.JsonProperty("wowAuditToken")]
         public string? WoWAuditToken { get; set; }
 
-        [JsonPropertyName("wowUtilsGroupId")]
+        [JsonPropertyName("wowUtilsGroupId"), Newtonsoft.Json.JsonProperty("wowUtilsGroupId")]
         public string? WoWUtilsGroupId { get; set; }
 
-        [JsonPropertyName("wowUtilsApiKey")]
+        [JsonPropertyName("wowUtilsApiKey"), Newtonsoft.Json.JsonProperty("wowUtilsApiKey")]
         public string? WoWUtilsApiKey { get; set; }
     }
 

@@ -4,7 +4,6 @@ namespace DevClient.Data.Discord
 
     public interface IGuildRepository
     {
-        void EnsureTable();
         List<GuildSettingsDto> GetAll();
         List<GuildSettingsDto> GetAllIncludingDeleted();
         GuildSettings[] LoadAsGuildSettings();

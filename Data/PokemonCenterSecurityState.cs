@@ -20,7 +20,6 @@ public sealed record PokemonCenterSecurityTransition(
 
 public interface IPokemonCenterSecurityStateRepository
 {
-    void EnsureTable();
     PokemonCenterSecurityState? Get(string stateKey);
     void Set(PokemonCenterSecurityState state);
     void AddTransition(PokemonCenterSecurityTransition transition);

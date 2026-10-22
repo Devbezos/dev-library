@@ -10,7 +10,8 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddDevClientClients(this IServiceCollection services)
     {
         services.AddHttpClient();
-        services.AddSingleton<IBattleNetClient, BattleNetClient>();
+        services.AddSingleton<IBattleNetClient>(sp => new BattleNetClient(
+            settings: sp.GetService<IConfiguration>()?.GetSection("battleNet").Get<BattleNetSettings>()));
         services.AddSingleton<IWoWAuditClient, WoWAuditClient>();
         services.AddSingleton<IRaiderIoClient, RaiderIoClient>();
         services.AddSingleton<IWoWUtilsClient, WoWUtilsClient>();

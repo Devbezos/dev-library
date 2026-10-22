@@ -10,7 +10,6 @@ namespace DevClient.Data
 
     public interface ITcgBlacklistWordRepository
     {
-        void EnsureTable();
         List<TcgBlacklistWord> GetAll(string? game = null);
         void Add(string game, string word);
         void Remove(string game, string word);
