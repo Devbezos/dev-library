@@ -2,8 +2,8 @@ using DevClient.Data;
 using DevClient.Data.WoW.WarcraftLogs;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using RestSharp;
 using Serilog;
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -31,13 +31,13 @@ namespace DevClient.Clients
 
             var base64Auth = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{settings.ClientId}:{settings.ClientSecret}"));
 
-            using var request = new HttpRequestMessage(HttpMethod.Post, Constants.WoW.WarcraftLogs.TokenUrl);
-            request.Headers.TryAddWithoutValidation("Authorization", $"Basic {base64Auth}");
-            request.Content = new StringContent("grant_type=client_credentials", Encoding.UTF8, "application/x-www-form-urlencoded");
+            var request = new RestRequest(Constants.WoW.WarcraftLogs.TokenUrl, Method.Post)
+                .AddHeader("Authorization", $"Basic {base64Auth}")
+                .AddParameter("grant_type", "client_credentials");
 
-            using var response = await SharedHttp.Client.SendAsync(request);
+            var response = await SharedHttp.Client.SendAsync(request);
             response.EnsureSuccessStatusCode();
-            var json = await response.Content.ReadAsStringAsync();
+            var json = response.Content ?? string.Empty;
             var tokenResponse = JsonConvert.DeserializeObject<WarcraftLogsOAuthResponse>(json)!;
 
             Tokens[settings.ClientId] = (tokenResponse.AccessToken, DateTime.UtcNow.AddSeconds(tokenResponse.ExpiresIn - 60));
@@ -76,13 +76,11 @@ namespace DevClient.Clients
                     }
                     """;
 
-                var payload = JsonConvert.SerializeObject(new { query });
-                using var request = SharedHttp.Bearer(HttpMethod.Post, Constants.WoW.WarcraftLogs.ApiUrl, token,
-                    new StringContent(payload, Encoding.UTF8, "application/json"));
+                var request = SharedHttp.Bearer(Method.Post, Constants.WoW.WarcraftLogs.ApiUrl, token).AddJsonBody(new { query });
 
-                using var response = await SharedHttp.Client.SendAsync(request);
+                var response = await SharedHttp.Client.SendAsync(request);
                 response.EnsureSuccessStatusCode();
-                var json = await response.Content.ReadAsStringAsync();
+                var json = response.Content ?? string.Empty;
 
                 var jObject = JObject.Parse(json);
                 var characterNode = jObject["data"]?["characterData"]?["character"];
@@ -240,13 +238,11 @@ namespace DevClient.Clients
         {
             var token = await GetOAuthToken();
 
-            var payload = JsonConvert.SerializeObject(new { query, variables });
-            using var request = SharedHttp.Bearer(HttpMethod.Post, Constants.WoW.WarcraftLogs.ApiUrl, token,
-                new StringContent(payload, Encoding.UTF8, "application/json"));
+            var request = SharedHttp.Bearer(Method.Post, Constants.WoW.WarcraftLogs.ApiUrl, token).AddJsonBody(new { query, variables });
 
-            using var response = await SharedHttp.Client.SendAsync(request);
+            var response = await SharedHttp.Client.SendAsync(request);
             response.EnsureSuccessStatusCode();
-            var jObject = JObject.Parse(await response.Content.ReadAsStringAsync());
+            var jObject = JObject.Parse(response.Content ?? string.Empty);
 
             // GraphQL reports failures like "No guild exists for this name/server/region." as HTTP 200 with an errors array.
             if (jObject["errors"] is JArray errors && errors.Count > 0)

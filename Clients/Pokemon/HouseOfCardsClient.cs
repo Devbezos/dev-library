@@ -1,25 +1,21 @@
 using DevClient.Data;
 using Serilog;
-using System.Text.Json;
+using Newtonsoft.Json.Linq;
+using RestSharp;
 
 namespace DevClient.Clients
 {
     public class HouseOfCardsClient
     {
         private static readonly ILogger Logger = Log.ForContext<HouseOfCardsClient>();
-        private static readonly HttpClient Client = ScrapingNetwork.CreateHttpClient();
         private const string UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+        private static readonly RestClient Client = ScrapingNetwork.CreateRestClient(UserAgent);
         private static readonly (string Url, string Category)[] DefaultUrls =
         [
             ("https://houseofcards.ca/collections/pokemon-booster-boxes", "Booster Boxes"),
         ];
 
         private readonly ITcgSourceUrlRepository? _sourceUrlRepo;
-
-        static HouseOfCardsClient()
-        {
-            Client.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
-        }
 
         public HouseOfCardsClient(ITcgSourceUrlRepository? sourceUrlRepo = null)
         {
@@ -73,23 +69,20 @@ namespace DevClient.Clients
             if (!path.StartsWith("/collections/", StringComparison.OrdinalIgnoreCase)) return [];
 
             var jsonUrl = $"{sourceUri.Scheme}://{sourceUri.Host}{path}/products.json?limit=250";
-            using var response = await Client.GetAsync(jsonUrl);
+            var response = await Client.SendAsync(new RestRequest(jsonUrl));
             if (!response.IsSuccessStatusCode) return [];
 
-            await using var stream = await response.Content.ReadAsStreamAsync();
-            using var document = await JsonDocument.ParseAsync(stream);
+            var document = RawJson.Parse(response.Content ?? string.Empty);
 
-            if (!document.RootElement.TryGetProperty("products", out var productsElement)
-                || productsElement.ValueKind != JsonValueKind.Array)
+            if (document["products"] is not JArray productsElement)
             {
                 return [];
             }
 
             var products = new List<Product>();
-            foreach (var productElement in productsElement.EnumerateArray())
+            foreach (var productElement in productsElement)
             {
-                if (!productElement.TryGetProperty("variants", out var variantsElement)
-                    || variantsElement.ValueKind != JsonValueKind.Array)
+                if (productElement["variants"] is not JArray variantsElement)
                 {
                     continue;
                 }
@@ -97,32 +90,24 @@ namespace DevClient.Clients
                 string priceValue = string.Empty;
                 var isAvailable = false;
 
-                foreach (var variantElement in variantsElement.EnumerateArray())
+                foreach (var variantElement in variantsElement)
                 {
-                    if (!variantElement.TryGetProperty("available", out var availableElement)
-                        || availableElement.ValueKind != JsonValueKind.True)
+                    if (variantElement["available"] is not { Type: JTokenType.Boolean } availableElement
+                        || !availableElement.Value<bool>())
                     {
                         continue;
                     }
 
                     isAvailable = true;
-                    if (variantElement.TryGetProperty("price", out var priceElement)
-                        && priceElement.ValueKind == JsonValueKind.String)
-                    {
-                        priceValue = priceElement.GetString() ?? string.Empty;
-                    }
+                    priceValue = variantElement.Str("price") ?? priceValue;
                     break;
                 }
 
                 if (!isAvailable) continue;
 
-                var title = productElement.TryGetProperty("title", out var titleElement) && titleElement.ValueKind == JsonValueKind.String
-                    ? (titleElement.GetString() ?? "Untitled Product").Trim()
-                    : "Untitled Product";
+                var title = (productElement.Str("title") ?? "Untitled Product").Trim();
 
-                var handle = productElement.TryGetProperty("handle", out var handleElement) && handleElement.ValueKind == JsonValueKind.String
-                    ? (handleElement.GetString() ?? string.Empty).Trim()
-                    : string.Empty;
+                var handle = (productElement.Str("handle") ?? string.Empty).Trim();
 
                 if (string.IsNullOrWhiteSpace(handle)) continue;
                 var price = string.IsNullOrWhiteSpace(priceValue) ? string.Empty : $"${priceValue}";

@@ -1,5 +1,6 @@
 using DevClient.Data;
 using Microsoft.Playwright;
+using RestSharp;
 using System.Net;
 
 namespace DevClient.Clients;
@@ -15,6 +16,17 @@ public static class ScrapingNetwork
 
         ApplyExpressVpnProxy(handler);
         return new HttpClient(handler);
+    }
+
+    /// <summary>
+    /// A long-lived RestClient for scraping (through the ExpressVPN proxy when it's on) that sends
+    /// <paramref name="userAgent"/> with every request. Keep it in a static; never make one per call.
+    /// </summary>
+    public static RestClient CreateRestClient(string userAgent, bool useCookies = true)
+    {
+        var http = CreateHttpClient(useCookies);
+        http.DefaultRequestHeaders.UserAgent.ParseAdd(userAgent);
+        return SharedHttp.Create(http, disposeHttpClient: true);
     }
 
     public static void ApplyExpressVpnProxy(HttpClientHandler handler)

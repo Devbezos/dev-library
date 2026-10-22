@@ -5,9 +5,8 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Serilog;
 using System.Globalization;
+using RestSharp;
 using System.Net;
-using System.Net.Http.Headers;
-using System.Text;
 using System.Text.RegularExpressions;
 
 namespace DevClient.Clients
@@ -31,9 +30,9 @@ namespace DevClient.Clients
             public string CharacterId { get; set; } = string.Empty;
         }
 
-        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly RestClient _http;
 
-        public WoWUtilsClient(IHttpClientFactory httpClientFactory) => _httpClientFactory = httpClientFactory;
+        public WoWUtilsClient(RestClient? http = null) => _http = http ?? SharedHttp.Client;
 
         private static readonly string[] _wowClasses =
         [
@@ -44,10 +43,9 @@ namespace DevClient.Clients
         public async Task<WoWUtilsFetchResponse> GetDroptimizerReport(string reportId)
         {
             Log.Information("WoWUtilsClient.GetDroptimizerReport: START {ReportId}", reportId);
-            using var client = BuildHttpClient();
-            var json = await client.GetStringAsync(
-                $"{Constants.WoW.WoWUtils.BaseUrl}/api/droptimizer/fetch?reportId={reportId}&file=report");
-            var result = JsonConvert.DeserializeObject<WoWUtilsFetchResponse>(json);
+            var response = await _http.SendAsync(BuildRequest(
+                $"{Constants.WoW.WoWUtils.BaseUrl}/api/droptimizer/fetch?reportId={reportId}&file=report"));
+            var result = JsonConvert.DeserializeObject<WoWUtilsFetchResponse>(response.EnsureSuccessStatusCode().Content ?? string.Empty);
             Log.Information("WoWUtilsClient.GetDroptimizerReport: END");
             return result!;
         }
@@ -62,9 +60,8 @@ namespace DevClient.Clients
                 throw new InvalidOperationException("WoW Utils groupId is required for roster sync");
 
             Log.Information("WoWUtilsClient.GetRosterMembers: START {GroupId}", groupId);
-            using var client = BuildHttpClient(apiKey);
-            using var response = await client.GetAsync($"{Constants.WoW.WoWUtils.BaseUrl}/v1/groups/{groupId}/roster");
-            var responseJson = await response.Content.ReadAsStringAsync();
+            var response = await _http.SendAsync(BuildRequest($"{Constants.WoW.WoWUtils.BaseUrl}/v1/groups/{groupId}/roster", apiKey));
+            var responseJson = response.Content ?? string.Empty;
 
             if (!response.IsSuccessStatusCode)
             {
@@ -85,9 +82,8 @@ namespace DevClient.Clients
                 throw new InvalidOperationException("WoW Utils groupId is required for raid schedule");
 
             Log.Information("WoWUtilsClient.GetRaidSchedule: START {GroupId}", groupId);
-            using var client = BuildHttpClient(apiKey);
-            using var response = await client.GetAsync($"{Constants.WoW.WoWUtils.BaseUrl}/v1/groups/{groupId}/calendar-events");
-            var responseJson = await response.Content.ReadAsStringAsync();
+            var response = await _http.SendAsync(BuildRequest($"{Constants.WoW.WoWUtils.BaseUrl}/v1/groups/{groupId}/calendar-events", apiKey));
+            var responseJson = response.Content ?? string.Empty;
 
             if (!response.IsSuccessStatusCode)
             {
@@ -120,12 +116,10 @@ namespace DevClient.Clients
                 profileKey
             };
 
-            using var client = BuildHttpClient(apiKey);
-            var content = new StringContent(JsonConvert.SerializeObject(body), Encoding.UTF8, "application/json");
             var url = $"{Constants.WoW.WoWUtils.BaseUrl}/v1/groups/{groupId}/droptimizers";
 
-            var response = await client.PostAsync(url, content);
-            var responseJson = await response.Content.ReadAsStringAsync();
+            var response = await _http.SendAsync(BuildRequest(url, apiKey, Method.Post).AddJsonBody(body));
+            var responseJson = response.Content ?? string.Empty;
 
             Log.Information("WoWUtilsClient.ImportDroptimizer: END status={Status}", (int)response.StatusCode);
 
@@ -196,12 +190,11 @@ namespace DevClient.Clients
 
         private async Task<(string Name, string Realm)?> FetchRaidbotsCharacterIdentity(string reportId)
         {
-            using var client = BuildHttpClient();
-            using var response = await client.GetAsync($"https://www.raidbots.com/simbot/report/{reportId}/input.txt");
+            var response = await _http.SendAsync(BuildRequest($"https://www.raidbots.com/simbot/report/{reportId}/input.txt"));
             if (!response.IsSuccessStatusCode)
                 return null;
 
-            var simcText = await response.Content.ReadAsStringAsync();
+            var simcText = response.Content;
             if (string.IsNullOrWhiteSpace(simcText))
                 return null;
 
@@ -221,16 +214,10 @@ namespace DevClient.Clients
 
         private async Task TrackWoWUtilsCharacter(string groupId, string apiKey, string characterId)
         {
-            using var client = BuildHttpClient(apiKey);
-            var body = new StringContent(
-                JsonConvert.SerializeObject(new WoWUtilsTrackCharacterRequest { CharacterId = characterId }),
-                Encoding.UTF8,
-                "application/json");
-
-            using var response = await client.PostAsync(
-                $"{Constants.WoW.WoWUtils.BaseUrl}/v1/groups/{groupId}/roster/members",
-                body);
-            var responseBody = await response.Content.ReadAsStringAsync();
+            var response = await _http.SendAsync(
+                BuildRequest($"{Constants.WoW.WoWUtils.BaseUrl}/v1/groups/{groupId}/roster/members", apiKey, Method.Post)
+                    .AddJsonBody(new WoWUtilsTrackCharacterRequest { CharacterId = characterId }));
+            var responseBody = response.Content ?? string.Empty;
 
             if (response.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable)
                 throw new HttpRequestException(
@@ -467,17 +454,16 @@ namespace DevClient.Clients
             return m.Success ? m.Groups[1].Value : null;
         }
 
-        private HttpClient BuildHttpClient(string? apiKey = null)
+        private static RestRequest BuildRequest(string url, string? apiKey = null, Method method = Method.Get)
         {
-            var client = _httpClientFactory.CreateClient();
-            client.DefaultRequestHeaders.Add("User-Agent",
+            var request = new RestRequest(url, method).AddHeader("User-Agent",
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36");
             if (!string.IsNullOrWhiteSpace(apiKey))
             {
-                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-                client.DefaultRequestHeaders.TryAddWithoutValidation("X-API-Key", apiKey);
+                request.AddHeader("Authorization", $"Bearer {apiKey}");
+                request.AddHeader("X-API-Key", apiKey);
             }
-            return client;
+            return request;
         }
 
         private static WoWUtilsApiException CreateApiException(string fallbackMessage, HttpStatusCode statusCode, string responseJson)

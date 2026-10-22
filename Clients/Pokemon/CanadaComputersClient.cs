@@ -1,11 +1,12 @@
 using DevClient.Data;
 using HtmlAgilityPack;
+using RestSharp;
 
 namespace DevClient.Clients
 {
     public class CanadaComputersClient
     {
-        private static readonly HttpClient client = ScrapingNetwork.CreateHttpClient();
+        private static readonly RestClient client = ScrapingNetwork.CreateRestClient("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
         private readonly DevClient.Data.ITcgSourceUrlRepository? _sourceUrlRepo;
         private static readonly string ccSearchUrl = "https://www.canadacomputers.com/en/search?id_category=914&s={0}&a=0&b=0";
         // Trading cards / boosters category URL (with and without ship filter).
@@ -16,7 +17,6 @@ namespace DevClient.Clients
         public async Task<List<Search>> GetProducts()
         {
             Console.WriteLine("CanadaComputersClient.GetProducts: START");
-            client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
 
             var searchList = new List<Search>();
 
@@ -86,7 +86,6 @@ namespace DevClient.Clients
         public async Task<List<Search>> GetPokemon()
         {
             Console.WriteLine("CanadaComputersClient.GetPokemon: START");
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
 
             var results = new List<Product>();
             try

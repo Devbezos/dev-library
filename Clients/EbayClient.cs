@@ -1,21 +1,21 @@
 using Microsoft.Extensions.Configuration;
-using System.Net.Http.Headers;
+using Newtonsoft.Json.Linq;
+using RestSharp;
 using System.Text;
-using System.Text.Json;
 
 namespace DevClient.Clients
 {
     public class EbayClient : IEbayClient
     {
-        private readonly IHttpClientFactory _http;
+        private readonly RestClient _http;
         private readonly IConfiguration _config;
         private readonly SemaphoreSlim _tokenLock = new(1,1);
         private string? _accessToken;
         private DateTime _tokenExpiry = DateTime.MinValue;
 
-        public EbayClient(IHttpClientFactory http, IConfiguration config)
+        public EbayClient(IConfiguration config, RestClient? http = null)
         {
-            _http = http;
+            _http = http ?? SharedHttp.Client;
             _config = config;
         }
 
@@ -39,27 +39,20 @@ namespace DevClient.Clients
                 if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(clientSecret))
                     return; // not configured
 
-                var http = _http.CreateClient();
                 var auth = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{clientId}:{clientSecret}"));
-                var body = new Dictionary<string,string>
-                {
-                    ["grant_type"] = "client_credentials",
-                    ["scope"] = _config.GetValue<string>("eBay:Scopes") ?? "https://api.ebay.com/oauth/api_scope"
-                };
-                var content = new FormUrlEncodedContent(body);
-                var req = new HttpRequestMessage(HttpMethod.Post, TokenUrl);
-                req.Headers.Authorization = new AuthenticationHeaderValue("Basic", auth);
-                req.Content = content;
-                var res = await http.SendAsync(req, ct);
+                var req = new RestRequest(TokenUrl, Method.Post)
+                    .AddHeader("Authorization", $"Basic {auth}")
+                    .AddParameter("grant_type", "client_credentials")
+                    .AddParameter("scope", _config.GetValue<string>("eBay:Scopes") ?? "https://api.ebay.com/oauth/api_scope");
+                var res = await _http.SendAsync(req, ct);
                 if (!res.IsSuccessStatusCode)
                     return;
-                using var s = await res.Content.ReadAsStreamAsync(ct);
-                using var doc = await JsonDocument.ParseAsync(s, cancellationToken: ct);
-                if (doc.RootElement.TryGetProperty("access_token", out var at))
+                var doc = JObject.Parse(res.Content ?? string.Empty);
+                if (doc["access_token"] is { } at)
                 {
-                    _accessToken = at.GetString();
-                    if (doc.RootElement.TryGetProperty("expires_in", out var ex))
-                        _tokenExpiry = DateTime.UtcNow.AddSeconds(ex.GetInt32());
+                    _accessToken = at.Value<string>();
+                    if (doc["expires_in"] is { } ex)
+                        _tokenExpiry = DateTime.UtcNow.AddSeconds(ex.Value<int>());
                 }
             }
             finally
@@ -75,34 +68,31 @@ namespace DevClient.Clients
                 return (null, 0, "USD");
 
             // Use Browse API search as an approximation (note: completed/sold items access may require different API)
-            var http = _http.CreateClient();
-            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
             var apiBase = _config.GetValue<bool>("eBay:UseSandbox", false)
                 ? "https://api.sandbox.ebay.com/buy/browse/v1/item_summary/search"
                 : "https://api.ebay.com/buy/browse/v1/item_summary/search";
 
             var url = $"{apiBase}?q={Uri.EscapeDataString(query)}&limit={maxResults}";
-            var res = await http.GetAsync(url, cancellationToken);
+            var res = await _http.SendAsync(new RestRequest(url).AddHeader("Authorization", $"Bearer {_accessToken}"), cancellationToken);
             if (!res.IsSuccessStatusCode)
                 return (null, 0, "USD");
 
-            using var s = await res.Content.ReadAsStreamAsync(cancellationToken);
-            using var doc = await JsonDocument.ParseAsync(s, cancellationToken: cancellationToken);
-            if (!doc.RootElement.TryGetProperty("itemSummaries", out var items))
+            var doc = JObject.Parse(res.Content ?? string.Empty);
+            if (doc["itemSummaries"] is not JArray items)
                 return (null, 0, "USD");
 
             var prices = new List<decimal>();
             string currency = "USD";
-            foreach (var item in items.EnumerateArray())
+            foreach (var item in items)
             {
-                if (item.TryGetProperty("price", out var priceEl) && priceEl.TryGetProperty("value", out var val))
+                if (item["price"] is JObject priceEl && priceEl["value"] is { } val)
                 {
-                    if (decimal.TryParse(val.GetString(), out var d))
+                    if (decimal.TryParse(val.Value<string>(), out var d))
                     {
                         prices.Add(d);
                     }
-                    if (priceEl.TryGetProperty("currency", out var curEl))
-                        currency = curEl.GetString() ?? currency;
+                    if (priceEl["currency"] is { } curEl)
+                        currency = curEl.Value<string>() ?? currency;
                 }
             }
 

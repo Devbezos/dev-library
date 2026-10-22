@@ -1,4 +1,5 @@
-using System.Net.Http.Json;
+using DevClient.Clients;
+using RestSharp;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
@@ -24,7 +25,7 @@ public sealed class DiscordAlertSink : ILogEventSink, IDisposable
 
     private readonly Uri _webhook;
     private readonly string _source;
-    private readonly HttpClient _http;
+    private readonly RestClient _http;
     private readonly Func<DateTimeOffset> _now;
     private readonly object _gate = new();
     private readonly Dictionary<string, (DateTimeOffset Last, int Repeats)> _seen = new(StringComparer.Ordinal);
@@ -38,7 +39,7 @@ public sealed class DiscordAlertSink : ILogEventSink, IDisposable
     {
         _webhook = webhook;
         _source = source;
-        _http = new HttpClient(handler ?? new SocketsHttpHandler()) { Timeout = TimeSpan.FromSeconds(10) };
+        _http = SharedHttp.Create(handler ?? new SocketsHttpHandler(), TimeSpan.FromSeconds(10));
         _now = now ?? (() => DateTimeOffset.UtcNow);
         _pump = Task.Run(PumpAsync);
     }
@@ -129,7 +130,8 @@ public sealed class DiscordAlertSink : ILogEventSink, IDisposable
             try
             {
                 // No mentions: an alert quoting "@everyone" mustn't ping anyone.
-                using var response = await _http.PostAsJsonAsync(_webhook, new { content, allowed_mentions = new { parse = Array.Empty<string>() } });
+                var response = await _http.SendAsync(new RestRequest(_webhook, Method.Post)
+                    .AddJsonBody(new { content, allowed_mentions = new { parse = Array.Empty<string>() } }));
                 if (!response.IsSuccessStatusCode)
                     SelfLog.WriteLine("Discord alert webhook answered {0}", (int)response.StatusCode);
             }

@@ -1,5 +1,6 @@
 using DevClient.Data;
 using HtmlAgilityPack;
+using RestSharp;
 using Serilog;
 
 namespace DevClient.Clients
@@ -7,7 +8,7 @@ namespace DevClient.Clients
     public class AtlasClient
     {
         private static readonly ILogger Logger = Log.ForContext<AtlasClient>();
-        private static readonly HttpClient client = ScrapingNetwork.CreateHttpClient();
+        private static readonly RestClient client = ScrapingNetwork.CreateRestClient("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
         private static readonly (string Url, string Category)[] AtlasPokemonDefaults =
         [
             ("https://www.atlascollectables.com/catalog/pokemon-pokemon_sealed_products-pokemon_booster_boxes/386?filter_by_stock=in-stock", "Booster Boxes"),
@@ -34,16 +35,9 @@ namespace DevClient.Clients
             return configured;
         }
 
-        private static void EnsureHeaders()
-        {
-            if (!client.DefaultRequestHeaders.Contains("User-Agent"))
-                client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
-        }
-
         private async Task<List<Product>> FetchProducts(string searchUrl, string logPrefix)
         {
             var allProducts = new List<Product>();
-            EnsureHeaders();
 
             var content = await client.GetStringAsync(searchUrl);
             var doc = new HtmlDocument();

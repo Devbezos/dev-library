@@ -2,15 +2,16 @@ using DevClient.Data;
 using HtmlAgilityPack;
 using Serilog;
 using System.Net;
-using System.Text.Json;
+using Newtonsoft.Json.Linq;
+using RestSharp;
 
 namespace DevClient.Clients
 {
     public class _401GamesClient
     {
         private static readonly ILogger Logger = Log.ForContext<_401GamesClient>();
-        private static readonly HttpClient client = ScrapingNetwork.CreateHttpClient(useCookies: false);
         private const string UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
+        private static readonly RestClient client = ScrapingNetwork.CreateRestClient(UserAgent, useCookies: false);
         private static readonly (string Url, string Category)[] DefaultUrls =
         [
             ("https://store.401games.ca/collections/pokemon-trading-cards?sort=price_max_to_min&filters=Product+Type,Product+Type_Booster+Boxes,Price_from_to,66-400,In+Stock,True", "Booster Boxes"),
@@ -18,13 +19,6 @@ namespace DevClient.Clients
         ];
         private static readonly string _401BaseUrl = "https://store.401games.ca";
         private readonly ITcgSourceUrlRepository? _sourceUrlRepo;
-
-        static _401GamesClient()
-        {
-            // DefaultRequestHeaders is not safe to mutate during concurrent sends.
-            // Configure it once up-front to avoid races under parallel API requests.
-            client.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
-        }
 
         public _401GamesClient(ITcgSourceUrlRepository? sourceUrlRepo = null)
         {
@@ -163,23 +157,20 @@ namespace DevClient.Clients
             if (!path.StartsWith("/collections/", StringComparison.OrdinalIgnoreCase)) return null;
 
             var jsonUrl = $"{sourceUri.Scheme}://{sourceUri.Host}{path}/products.json?limit=250";
-            using var response = await client.GetAsync(jsonUrl);
+            var response = await client.SendAsync(new RestRequest(jsonUrl));
             if (!response.IsSuccessStatusCode) return null;
 
-            await using var stream = await response.Content.ReadAsStreamAsync();
-            using var document = await JsonDocument.ParseAsync(stream);
+            var document = RawJson.Parse(response.Content ?? string.Empty);
 
-            if (!document.RootElement.TryGetProperty("products", out var productsElement)
-                || productsElement.ValueKind != JsonValueKind.Array)
+            if (document["products"] is not JArray productsElement)
             {
                 return new List<Product>();
             }
 
             var products = new List<Product>();
-            foreach (var productElement in productsElement.EnumerateArray())
+            foreach (var productElement in productsElement)
             {
-                if (!productElement.TryGetProperty("variants", out var variantsElement)
-                    || variantsElement.ValueKind != JsonValueKind.Array)
+                if (productElement["variants"] is not JArray variantsElement)
                 {
                     continue;
                 }
@@ -187,32 +178,24 @@ namespace DevClient.Clients
                 string priceValue = string.Empty;
                 var isAvailable = false;
 
-                foreach (var variantElement in variantsElement.EnumerateArray())
+                foreach (var variantElement in variantsElement)
                 {
-                    if (!variantElement.TryGetProperty("available", out var availableElement)
-                        || availableElement.ValueKind != JsonValueKind.True)
+                    if (variantElement["available"] is not { Type: JTokenType.Boolean } availableElement
+                        || !availableElement.Value<bool>())
                     {
                         continue;
                     }
 
                     isAvailable = true;
-                    if (variantElement.TryGetProperty("price", out var priceElement)
-                        && priceElement.ValueKind == JsonValueKind.String)
-                    {
-                        priceValue = priceElement.GetString() ?? string.Empty;
-                    }
+                    priceValue = variantElement.Str("price") ?? priceValue;
                     break;
                 }
 
                 if (!isAvailable) continue;
 
-                var title = productElement.TryGetProperty("title", out var titleElement) && titleElement.ValueKind == JsonValueKind.String
-                    ? (titleElement.GetString() ?? "Untitled Product").Trim()
-                    : "Untitled Product";
+                var title = (productElement.Str("title") ?? "Untitled Product").Trim();
 
-                var handle = productElement.TryGetProperty("handle", out var handleElement) && handleElement.ValueKind == JsonValueKind.String
-                    ? (handleElement.GetString() ?? string.Empty).Trim()
-                    : string.Empty;
+                var handle = (productElement.Str("handle") ?? string.Empty).Trim();
 
                 if (string.IsNullOrWhiteSpace(handle)) continue;
                 var price = string.IsNullOrWhiteSpace(priceValue) ? string.Empty : $"${priceValue}";

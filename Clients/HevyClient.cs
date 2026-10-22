@@ -1,6 +1,7 @@
 using System.Net;
 using DevClient.Data.Hevy;
 using Newtonsoft.Json;
+using RestSharp;
 
 namespace DevClient.Clients;
 
@@ -28,7 +29,7 @@ public class HevyClient : IHevyApi
     /// <summary>The API's maximum page size for workouts and events.</summary>
     public const int PageSize = 10;
 
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(30);
     private readonly string _apiKey;
 
     public HevyClient(string apiKey) => _apiKey = apiKey;
@@ -48,34 +49,31 @@ public class HevyClient : IHevyApi
 
     private async Task<T> Get<T>(string path, CancellationToken ct)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"{BaseUrl}/{path}");
-        request.Headers.Add("api-key", _apiKey);
-        request.Headers.Add("accept", "application/json");
+        var request = new RestRequest($"{BaseUrl}/{path}") { Timeout = RequestTimeout }
+            .AddHeader("api-key", _apiKey)
+            .AddHeader("accept", "application/json");
 
-        HttpResponseMessage response;
+        RestResponse response;
         try
         {
-            response = await Http.SendAsync(request, ct);
+            response = await SharedHttp.Client.SendAsync(request, ct);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
             throw new HevyApiException(null, $"Couldn't reach Hevy: {ex.Message}");
         }
 
-        using (response)
+        var body = response.Content ?? string.Empty;
+        if (!response.IsSuccessStatusCode)
         {
-            var body = await response.Content.ReadAsStringAsync(ct);
-            if (!response.IsSuccessStatusCode)
+            throw new HevyApiException(response.StatusCode, response.StatusCode switch
             {
-                throw new HevyApiException(response.StatusCode, response.StatusCode switch
-                {
-                    HttpStatusCode.Unauthorized => "Hevy rejected the API key. Check it at hevy.com/settings?developer.",
-                    HttpStatusCode.Forbidden => "Hevy refused the request. The API needs an active Hevy Pro subscription.",
-                    HttpStatusCode.TooManyRequests => "Hevy is rate limiting requests; it'll retry on the next sync.",
-                    _ => $"Hevy returned {(int)response.StatusCode}: {(body.Length > 200 ? body[..200] : body)}",
-                });
-            }
-            return JsonConvert.DeserializeObject<T>(body) ?? throw new HevyApiException(response.StatusCode, "Hevy returned an empty response.");
+                HttpStatusCode.Unauthorized => "Hevy rejected the API key. Check it at hevy.com/settings?developer.",
+                HttpStatusCode.Forbidden => "Hevy refused the request. The API needs an active Hevy Pro subscription.",
+                HttpStatusCode.TooManyRequests => "Hevy is rate limiting requests; it'll retry on the next sync.",
+                _ => $"Hevy returned {(int)response.StatusCode}: {(body.Length > 200 ? body[..200] : body)}",
+            });
         }
+        return JsonConvert.DeserializeObject<T>(body) ?? throw new HevyApiException(response.StatusCode, "Hevy returned an empty response.");
     }
 }

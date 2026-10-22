@@ -1,3 +1,4 @@
+using RestSharp;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
@@ -19,7 +20,7 @@ public sealed record PokemonCenterSecuritySnapshot(
 public sealed class PokemonCenterSecurityClient
 {
     private static readonly Uri Url = new("https://www.pokemoncenter.com/en-ca");
-    private static readonly HttpClient Client = CreateClient();
+    private static readonly RestClient Client = CreateClient();
 
     private static readonly string[] MarkerPatterns =
     [
@@ -45,14 +46,14 @@ public sealed class PokemonCenterSecurityClient
 
     public async Task<PokemonCenterSecuritySnapshot> GetSnapshot(CancellationToken cancellationToken = default)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, Url);
-        request.Headers.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36");
-        request.Headers.Accept.ParseAdd("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
-        request.Headers.AcceptLanguage.ParseAdd("en-CA,en;q=0.9");
+        var request = new RestRequest(Url)
+            .AddHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36")
+            .AddHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            .AddHeader("Accept-Language", "en-CA,en;q=0.9");
 
-        using var response = await Client.SendAsync(request, HttpCompletionOption.ResponseContentRead, cancellationToken);
-        var content = await response.Content.ReadAsStringAsync(cancellationToken);
-        var finalUrl = response.RequestMessage?.RequestUri?.ToString() ?? Url.ToString();
+        var response = await Client.SendAsync(request, cancellationToken);
+        var content = response.Content ?? string.Empty;
+        var finalUrl = response.ResponseUri?.ToString() ?? Url.ToString();
         var combined = $"{finalUrl}\n{HeadersToString(response)}\n{content}";
 
         var markers = MarkerPatterns
@@ -76,7 +77,9 @@ public sealed class PokemonCenterSecurityClient
             m.Contains("imperva", StringComparison.OrdinalIgnoreCase) ||
             m.Contains("datadome", StringComparison.OrdinalIgnoreCase));
 
-        var serverHeader = string.Join(", ", response.Headers.Server.Select(x => x.ToString()));
+        var serverHeader = string.Join(", ", (response.Headers ?? [])
+            .Where(h => string.Equals(h.Name, "Server", StringComparison.OrdinalIgnoreCase))
+            .Select(h => h.Value));
         var normalizedTitle = ExtractTitle(content);
         var fingerprintText = string.Join('\n',
             (int)response.StatusCode,
@@ -100,7 +103,7 @@ public sealed class PokemonCenterSecurityClient
             summary);
     }
 
-    private static HttpClient CreateClient()
+    private static RestClient CreateClient()
     {
         var handler = new HttpClientHandler
         {
@@ -109,17 +112,15 @@ public sealed class PokemonCenterSecurityClient
         };
         ScrapingNetwork.ApplyExpressVpnProxy(handler);
 
-        return new HttpClient(handler)
-        {
-            Timeout = TimeSpan.FromSeconds(20),
-        };
+        return SharedHttp.Create(handler, TimeSpan.FromSeconds(20));
     }
 
-    private static string HeadersToString(HttpResponseMessage response)
+    private static string HeadersToString(RestResponse response)
     {
-        var headers = response.Headers
-            .Concat(response.Content.Headers)
-            .Select(h => $"{h.Key}: {string.Join(",", h.Value)}");
+        var headers = (response.Headers ?? [])
+            .Concat(response.ContentHeaders ?? [])
+            .GroupBy(h => h.Name)
+            .Select(h => $"{h.Key}: {string.Join(",", h.Select(x => x.Value))}");
         return string.Join('\n', headers);
     }
 

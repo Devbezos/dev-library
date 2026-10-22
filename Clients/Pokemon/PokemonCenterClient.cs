@@ -1,18 +1,18 @@
 using DevClient.Data;
 using HtmlAgilityPack;
+using RestSharp;
 
 namespace DevClient.Clients
 {
     public class PokemonCenterClient
     {
-        private static readonly HttpClient client = ScrapingNetwork.CreateHttpClient();
+        private static readonly RestClient client = ScrapingNetwork.CreateRestClient("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
         private static readonly string searchUrl = "https://www.pokemoncenter.com/en-ca/search/{0}";
         private static readonly List<string> Keywords = new List<string>() { "prismatic-evolutions" };
 
         public async Task<List<Search>> GetPokemon()
         {
             var searchList = new List<Search>();
-            client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
 
             try
             {

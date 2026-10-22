@@ -1,5 +1,6 @@
 using DevClient.Data;
 using HtmlAgilityPack;
+using RestSharp;
 using Serilog;
 
 namespace DevClient.Clients
@@ -7,7 +8,7 @@ namespace DevClient.Clients
     public class ChimeraClient
     {
         private static readonly ILogger Logger = Log.ForContext<ChimeraClient>();
-        private static readonly HttpClient Client = ScrapingNetwork.CreateHttpClient();
+        private static readonly RestClient Client = ScrapingNetwork.CreateRestClient("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
         private const string DefaultCollectionUrl = "https://chimeragamingonline.com/collections/pokemon?filter.v.availability=1&filter.v.price.gte=20&filter.v.price.lte=&page={0}";
         private const string ChimeraBaseUrl = "https://chimeragamingonline.com";
         private readonly ITcgSourceUrlRepository? _sourceUrlRepo;
@@ -31,9 +32,6 @@ namespace DevClient.Clients
 
             if (sourceUrls == null || sourceUrls.Count == 0)
                 sourceUrls = [DefaultCollectionUrl];
-
-            if (!Client.DefaultRequestHeaders.Contains("User-Agent"))
-                Client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
 
             try
             {

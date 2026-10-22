@@ -3,8 +3,8 @@ using DevClient.Data.Fitness;
 using DevClient.Clients;
 using Discord;
 using Newtonsoft.Json;
+using RestSharp;
 using Serilog;
-using System.Net.Http.Headers;
 using ICustomDiscordClient = DevClient.Clients.IDiscordClient;
 
 namespace DevClient.Clients.Fitness
@@ -54,16 +54,14 @@ namespace DevClient.Clients.Fitness
         {
             Log.Information("GoogleHealthClient: Refreshing access token");
 
-            using var content = new FormUrlEncodedContent(new Dictionary<string, string>
-            {
-                ["client_id"] = _settings.ClientId,
-                ["client_secret"] = _settings.ClientSecret,
-                ["refresh_token"] = _settings.RefreshToken,
-                ["grant_type"] = "refresh_token"
-            });
+            var request = new RestRequest(Constants.GoogleHealth.TokenUrl, Method.Post)
+                .AddParameter("client_id", _settings.ClientId)
+                .AddParameter("client_secret", _settings.ClientSecret)
+                .AddParameter("refresh_token", _settings.RefreshToken)
+                .AddParameter("grant_type", "refresh_token");
 
-            using var response = await SharedHttp.Client.PostAsync(Constants.GoogleHealth.TokenUrl, content);
-            var json = await response.Content.ReadAsStringAsync();
+            var response = await SharedHttp.Client.SendAsync(request);
+            var json = response.Content ?? string.Empty;
 
             if (!response.IsSuccessStatusCode)
                 throw new InvalidOperationException($"Failed to refresh Google Health token: {json}");
@@ -89,9 +87,8 @@ namespace DevClient.Clients.Fitness
             // so a passing failure doesn't come back as "no data".
             for (var attempt = 1; ; attempt++)
             {
-                using var request = SharedHttp.Bearer(HttpMethod.Get, url, token);
-                using var response = await SharedHttp.Client.SendAsync(request);
-                var json = await response.Content.ReadAsStringAsync();
+                var response = await SharedHttp.Client.SendAsync(SharedHttp.Bearer(Method.Get, url, token));
+                var json = response.Content ?? string.Empty;
                 if (response.IsSuccessStatusCode)
                     return json;
                 var retryable = (int)response.StatusCode == 429 || (int)response.StatusCode >= 500;
@@ -206,10 +203,9 @@ namespace DevClient.Clients.Fitness
         private async Task<string?> PostRaw(string path, object body)
         {
             var token = await GetAccessToken();
-            using var request = SharedHttp.Bearer(HttpMethod.Post, $"{Constants.GoogleHealth.BaseUrl}/{path}", token,
-                new StringContent(JsonConvert.SerializeObject(body), System.Text.Encoding.UTF8, "application/json"));
-            using var response = await SharedHttp.Client.SendAsync(request);
-            var json = await response.Content.ReadAsStringAsync();
+            var request = SharedHttp.Bearer(Method.Post, $"{Constants.GoogleHealth.BaseUrl}/{path}", token).AddJsonBody(body);
+            var response = await SharedHttp.Client.SendAsync(request);
+            var json = response.Content ?? string.Empty;
             if (!response.IsSuccessStatusCode)
             {
                 Log.Warning("GoogleHealthClient POST {Path} failed: {Json}", path, json);

@@ -1,6 +1,6 @@
 using DevClient.Data;
 using Newtonsoft.Json;
-using System.Net.Http.Headers;
+using RestSharp;
 
 namespace DevClient.Clients.Fitness
 {
@@ -49,9 +49,8 @@ namespace DevClient.Clients.Fitness
                     "&singleEvents=false&maxResults=250&eventTypes=default&eventTypes=fromGmail" +
                     (pageToken is null ? "" : $"&pageToken={Uri.EscapeDataString(pageToken)}");
 
-                using var request = SharedHttp.Bearer(HttpMethod.Get, url, token);
-                using var response = await SharedHttp.Client.SendAsync(request);
-                var json = await response.Content.ReadAsStringAsync();
+                var response = await SharedHttp.Client.SendAsync(SharedHttp.Bearer(Method.Get, url, token));
+                var json = response.Content ?? string.Empty;
                 if (!response.IsSuccessStatusCode)
                     throw new GoogleCalendarException((int)response.StatusCode == 403
                         ? "Google didn't grant calendar access. Reconnect Google on the Fitness tab."

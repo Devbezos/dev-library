@@ -4,6 +4,7 @@ using DevClient.Data.WoW.Raidbots;
 using DevClient;
 using DevClient.Clients;
 using Newtonsoft.Json;
+using RestSharp;
 using Serilog;
 using System.Net.Security;
 using System.Security.Authentication;
@@ -12,12 +13,20 @@ namespace DevClient.Clients
 {
     public class RaidBotsClient
     {
-        private readonly IHttpClientFactory _httpClientFactory;
+        // Raidbots only gets TLS 1.2/1.3; one long-lived client so connections are pooled.
+        private static readonly RestClient Http = SharedHttp.Create(new SocketsHttpHandler
+        {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+            SslOptions = new SslClientAuthenticationOptions
+            {
+                EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13
+            }
+        });
+
         private readonly IBattleNetClient _battleNetClient;
 
-        public RaidBotsClient(IHttpClientFactory httpClientFactory, IBattleNetClient battleNetClient)
+        public RaidBotsClient(IBattleNetClient battleNetClient)
         {
-            _httpClientFactory = httpClientFactory;
             _battleNetClient = battleNetClient;
         }
 
@@ -28,27 +37,22 @@ namespace DevClient.Clients
 
             var content = string.Empty;
 
-            using (var httpClient = _httpClientFactory.CreateClient("raidbots"))
+            try
             {
-                try
-                {
-                    httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+                var response = await Http.SendAsync(new RestRequest(url).AddHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"));
 
-                    var response = await httpClient.GetAsync(url);
-
-                    if (response.IsSuccessStatusCode)
-                    {
-                        content = await response.Content.ReadAsStringAsync();
-                    }
-                    else
-                    {
-                        Log.Warning("RaidBotsClient.IsValidReport: HTTP {StatusCode}", response.StatusCode);
-                    }
-                }
-                catch (Exception ex)
+                if (response.IsSuccessStatusCode)
                 {
-                    Log.Error(ex, "RaidBotsClient.IsValidReport: exception");
+                    content = response.Content ?? string.Empty;
                 }
+                else
+                {
+                    Log.Warning("RaidBotsClient.IsValidReport: HTTP {StatusCode}", response.StatusCode);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "RaidBotsClient.IsValidReport: exception");
             }
 
             if (content.ToUpper().Contains("HERO 6/6") || content.ToUpper().Contains("MYTH 6/6"))
@@ -70,28 +74,23 @@ namespace DevClient.Clients
             var url = string.Format(Constants.WoW.RaidBots.FileUrlBase, reportId);
             var content = string.Empty;
 
-            using (var httpClient = _httpClientFactory.CreateClient("raidbots"))
+            try
             {
-                try
-                {
-                    httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+                var response = await Http.SendAsync(new RestRequest(url).AddHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"));
 
-                    var response = await httpClient.GetAsync(url);
-
-                    if (response.IsSuccessStatusCode)
-                    {
-                        content = await response.Content.ReadAsStringAsync();
-                        // Log.Debug(content);
-                    }
-                    else
-                    {
-                        Log.Warning("RaidBotsClient.GetItemUpgrades: HTTP {StatusCode}", response.StatusCode);
-                    }
-                }
-                catch (Exception ex)
+                if (response.IsSuccessStatusCode)
                 {
-                    Log.Error(ex, "RaidBotsClient.GetItemUpgrades: exception");
+                    content = response.Content ?? string.Empty;
+                    // Log.Debug(content);
                 }
+                else
+                {
+                    Log.Warning("RaidBotsClient.GetItemUpgrades: HTTP {StatusCode}", response.StatusCode);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "RaidBotsClient.GetItemUpgrades: exception");
             }
 
             content = content.Replace('\t', ',');

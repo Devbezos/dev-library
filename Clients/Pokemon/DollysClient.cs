@@ -1,5 +1,6 @@
 using DevClient.Data;
 using HtmlAgilityPack;
+using RestSharp;
 using Serilog;
 using System.Text.RegularExpressions;
 
@@ -8,7 +9,8 @@ namespace DevClient.Clients
     public class DollysClient
     {
         private static readonly ILogger Logger = Log.ForContext<DollysClient>();
-        private static readonly HttpClient _client = ScrapingNetwork.CreateHttpClient();
+        private static readonly RestClient _client = ScrapingNetwork.CreateRestClient(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
         private static readonly string DollysBaseUrl = "https://www.dollys.ca";
 
         private static readonly (string Url, string Category)[] Catalogs =
@@ -40,17 +42,9 @@ namespace DevClient.Clients
             return configured;
         }
 
-        private static void EnsureHeaders()
-        {
-            if (!_client.DefaultRequestHeaders.Contains("User-Agent"))
-                _client.DefaultRequestHeaders.Add("User-Agent",
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
-        }
-
         private async Task<List<Search>> FetchCatalogs((string Url, string Category)[] catalogs, string keyword, string logPrefix)
         {
             var results = new List<Search>();
-            EnsureHeaders();
 
             foreach (var (url, category) in catalogs)
             {

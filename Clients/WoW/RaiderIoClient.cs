@@ -1,26 +1,25 @@
 using DevClient.Data;
 using DevClient.Data.WoW;
 using Newtonsoft.Json;
+using RestSharp;
 using Serilog;
 
 namespace DevClient.Clients
 {
     public class RaiderIoClient : IRaiderIoClient
     {
-        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly RestClient _http;
 
-        public RaiderIoClient(IHttpClientFactory httpClientFactory) => _httpClientFactory = httpClientFactory;
+        public RaiderIoClient(RestClient? http = null) => _http = http ?? SharedHttp.Client;
         public async Task<RaiderIoKeyResponse> GetWeeklyKeyHistory(WoWAuditCharacter guildy)
         {
             Log.Information("RaiderIoClient.GetWeeklyKeyHistory: START");
-            using var client = _httpClientFactory.CreateClient();
-            using var request = new HttpRequestMessage(new HttpMethod("GET"),
-                $"{Constants.WoW.RaiderIo.Url}/characters/profile?region=us&realm={guildy.Realm}&name={guildy.Name}&fields=mythic_plus_weekly_highest_level_runs,gear");
+            var request = new RestRequest(
+                $"{Constants.WoW.RaiderIo.Url}/characters/profile?region=us&realm={guildy.Realm}&name={guildy.Name}&fields=mythic_plus_weekly_highest_level_runs,gear")
+                .AddHeader("accept", "application/json");
 
-            request.Headers.TryAddWithoutValidation("accept", "application/json");
-            using var httpResponse = await client.SendAsync(request);
-            var response = await httpResponse.Content.ReadAsStringAsync();
-            var keyResponse = JsonConvert.DeserializeObject<RaiderIoKeyResponse>(response);
+            var httpResponse = await _http.SendAsync(request);
+            var keyResponse = JsonConvert.DeserializeObject<RaiderIoKeyResponse>(httpResponse.Content ?? string.Empty);
 
             Log.Information("RaiderIoClient.GetWeeklyKeyHistory: END");
             return keyResponse!;

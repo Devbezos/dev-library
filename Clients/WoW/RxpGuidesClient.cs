@@ -1,4 +1,5 @@
 using Microsoft.Playwright;
+using RestSharp;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
@@ -16,6 +17,11 @@ public sealed record F2hDownloadForm(string Action, int WaitSeconds);
 public sealed class RxpGuidesClient
 {
     private const string UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+    private static readonly RestClient ArchiveClient = SharedHttp.Create(new HttpClientHandler
+    {
+        UseCookies = false,
+        AutomaticDecompression = DecompressionMethods.All,
+    }, TimeSpan.FromMinutes(5));
     private const string FirstPostSelector = "div[id^='post_message_']";
     private const int PageTimeoutMs = 60_000;
 
@@ -86,66 +92,58 @@ public sealed class RxpGuidesClient
     // Saves the archive into destinationDirectory (the caller owns and cleans it up).
     public async Task<RxpGuidesArchive> DownloadArchive(string f2hUrl, string destinationDirectory, CancellationToken cancellationToken = default)
     {
-        using var handler = new HttpClientHandler
-        {
-            CookieContainer = new CookieContainer(),
-            AutomaticDecompression = DecompressionMethods.All,
-        };
-        using var http = new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(5) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
-
-        var filePage = await http.GetStringAsync(f2hUrl, cancellationToken);
+        var cookies = new CookieContainer();
+        RestRequest Request(string url, Method method = Method.Get) =>
+            new RestRequest(url, method) { CookieContainer = cookies }.AddHeader("User-Agent", UserAgent);
+        var filePage = (await ArchiveClient.SendAsync(Request(f2hUrl), cancellationToken)).EnsureSuccessStatusCode().Content ?? string.Empty;
         var form = ParseDownloadForm(filePage)
             ?? throw new InvalidOperationException($"No download form on {f2hUrl}; the file may have been removed");
 
         // Honour the page's countdown so the request flow looks like a normal visitor's.
         await Task.Delay(TimeSpan.FromSeconds(form.WaitSeconds + 1), cancellationToken);
 
-        using var thanksRequest = new HttpRequestMessage(HttpMethod.Post, form.Action)
-        {
-            Content = new FormUrlEncodedContent([]),
-        };
-        thanksRequest.Headers.Referrer = new Uri(f2hUrl);
-        using var thanksResponse = await http.SendAsync(thanksRequest, cancellationToken);
+        var thanksRequest = Request(form.Action, Method.Post)
+            .AddHeader("Referer", f2hUrl)
+            .AddStringBody(string.Empty, "application/x-www-form-urlencoded");
+        var thanksResponse = await ArchiveClient.SendAsync(thanksRequest, cancellationToken);
         thanksResponse.EnsureSuccessStatusCode();
-        var thanksPage = await thanksResponse.Content.ReadAsStringAsync(cancellationToken);
+        var thanksPage = thanksResponse.Content ?? string.Empty;
         var directUrl = ParseDirectFileUrl(thanksPage)
             ?? throw new InvalidOperationException("Could not find the direct file link on the f2h download page");
 
-        using var fileRequest = new HttpRequestMessage(HttpMethod.Get, directUrl);
-        fileRequest.Headers.Referrer = new Uri(form.Action);
-        using var fileResponse = await http.SendAsync(fileRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        fileResponse.EnsureSuccessStatusCode();
-
-        var disposition = fileResponse.Content.Headers.ContentDisposition;
-        // GetFileName strips any directory parts so a hostile Content-Disposition can't escape destinationDirectory.
-        var fileName = Path.GetFileName((disposition?.FileNameStar ?? disposition?.FileName ?? new Uri(directUrl).LocalPath).Trim('"'));
-        if (string.IsNullOrWhiteSpace(fileName))
-            fileName = "RXPGuides.rar";
-
-        Directory.CreateDirectory(destinationDirectory);
-        var filePath = Path.Combine(destinationDirectory, fileName);
-
-        using var sha = SHA256.Create();
+        string? fileName = null;
+        string? filePath = null;
         long size = 0;
-        await using (var stream = await fileResponse.Content.ReadAsStreamAsync(cancellationToken))
-        await using (var file = File.Create(filePath))
+        using var sha = SHA256.Create();
+        var fileRequest = Request(directUrl).AddHeader("Referer", form.Action);
+        fileRequest.CompletionOption = HttpCompletionOption.ResponseHeadersRead;
+        fileRequest.AdvancedResponseWriter = (response, request) =>
         {
+            response.EnsureSuccessStatusCode();
+            var disposition = response.Content.Headers.ContentDisposition;
+            fileName = Path.GetFileName((disposition?.FileNameStar ?? disposition?.FileName ?? new Uri(directUrl).LocalPath).Trim('"'));
+            if (string.IsNullOrWhiteSpace(fileName)) fileName = "RXPGuides.rar";
+            Directory.CreateDirectory(destinationDirectory);
+            filePath = Path.Combine(destinationDirectory, fileName);
+            using var stream = response.Content.ReadAsStream(cancellationToken);
+            using var file = File.Create(filePath);
             var buffer = new byte[81920];
             int read;
-            while ((read = await stream.ReadAsync(buffer, cancellationToken)) > 0)
+            while ((read = stream.ReadAsync(buffer, cancellationToken).AsTask().GetAwaiter().GetResult()) > 0)
             {
                 sha.TransformBlock(buffer, 0, read, null, 0);
-                await file.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+                file.Write(buffer, 0, read);
                 size += read;
             }
-        }
+            return new RestResponse(request) { StatusCode = response.StatusCode };
+        };
+        (await ArchiveClient.SendAsync(fileRequest, cancellationToken)).EnsureSuccessStatusCode();
         sha.TransformFinalBlock([], 0, 0);
 
         if (size == 0)
             throw new InvalidOperationException($"f2h returned an empty file for {f2hUrl}");
 
-        return new RxpGuidesArchive(fileName, Convert.ToHexString(sha.Hash!).ToLowerInvariant(), size, filePath);
+        return new RxpGuidesArchive(fileName!, Convert.ToHexString(sha.Hash!).ToLowerInvariant(), size, filePath!);
     }
 
     public static string? FindF2hLink(IEnumerable<string> links, string postText)

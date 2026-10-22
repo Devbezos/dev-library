@@ -2,8 +2,8 @@ using DevClient.Data;
 using DevClient.Data.WoW.Realms;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using RestSharp;
 using System.Collections.Concurrent;
-using System.Net.Http.Headers;
 using System.Text;
 
 namespace DevClient.Clients
@@ -11,27 +11,22 @@ namespace DevClient.Clients
     public class BattleNetClient : IBattleNetClient
     {
         private static readonly TimeSpan RealmIndexLifetime = TimeSpan.FromHours(6);
-        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly RestClient _http;
         private readonly ConcurrentDictionary<string, (DateTime FetchedAtUtc, IReadOnlyList<BattleNetRealm> Realms)> _realmIndex = new();
 
-        public BattleNetClient(IHttpClientFactory httpClientFactory) => _httpClientFactory = httpClientFactory;
+        public BattleNetClient(RestClient? http = null) => _http = http ?? SharedHttp.Client;
 
 
         public async Task<string> GetOAuthToken()
         {
-            using var client = _httpClientFactory.CreateClient();
-            using var request = new HttpRequestMessage(new HttpMethod("POST"), AppSettings.BattleNet.TokenUrl);
-
             var base64authorization = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{AppSettings.BattleNet.ClientId}:{AppSettings.BattleNet.ClientSecret}"));
-            request.Headers.TryAddWithoutValidation("Authorization", $"Basic {base64authorization}");
+            var request = new RestRequest(AppSettings.BattleNet.TokenUrl, Method.Post)
+                .AddHeader("Authorization", $"Basic {base64authorization}")
+                .AddParameter("grant_type", "client_credentials");
 
-            request.Content = new StringContent("grant_type=client_credentials");
-            request.Content.Headers.ContentType = MediaTypeHeaderValue.Parse("application/x-www-form-urlencoded");
+            var httpResponse = await _http.SendAsync(request);
 
-            using var httpResponse = await client.SendAsync(request);
-            var response = await httpResponse.Content.ReadAsStringAsync();
-
-            return JsonConvert.DeserializeObject<BlizzardOAuthResponse>(response)!.AccessToken;
+            return JsonConvert.DeserializeObject<BlizzardOAuthResponse>(httpResponse.Content ?? string.Empty)!.AccessToken;
         }
 
         public async Task<BattleNetRealmStatus> GetRealmStatus(string region, string realmSlug)
@@ -70,15 +65,13 @@ namespace DevClient.Clients
         public async Task<string> GetItemName(string itemId)
         {
             var token = await GetOAuthToken();
-            using var client = _httpClientFactory.CreateClient();
-            using var request = new HttpRequestMessage(new HttpMethod("GET"), string.Format(AppSettings.BattleNet.ApiUrl + Constants.WoW.BattleNet.ItemNameEndpoint, itemId));
-            request.Headers.TryAddWithoutValidation("accept", "application/json");
-            request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {token}");
+            var request = new RestRequest(string.Format(AppSettings.BattleNet.ApiUrl + Constants.WoW.BattleNet.ItemNameEndpoint, itemId))
+                .AddHeader("accept", "application/json")
+                .AddHeader("Authorization", $"Bearer {token}");
 
-            using var httpResponse = await client.SendAsync(request);
-            var response = await httpResponse.Content.ReadAsStringAsync();
+            var httpResponse = await _http.SendAsync(request);
 
-            return JsonConvert.DeserializeObject<JObject>(response)?["name"]?.ToString() ?? string.Empty;
+            return JsonConvert.DeserializeObject<JObject>(httpResponse.Content ?? string.Empty)?["name"]?.ToString() ?? string.Empty;
         }
 
         // The configured API URL is the US one (https://us.api.blizzard.com/data/wow); other regions swap the host.
@@ -87,14 +80,13 @@ namespace DevClient.Clients
 
         private async Task<JObject> GetJson(string token, string url)
         {
-            using var client = _httpClientFactory.CreateClient();
-            using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.TryAddWithoutValidation("accept", "application/json");
-            request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {token}");
+            var request = new RestRequest(url)
+                .AddHeader("accept", "application/json")
+                .AddHeader("Authorization", $"Bearer {token}");
 
-            using var httpResponse = await client.SendAsync(request);
+            var httpResponse = await _http.SendAsync(request);
             httpResponse.EnsureSuccessStatusCode();
-            return JObject.Parse(await httpResponse.Content.ReadAsStringAsync());
+            return JObject.Parse(httpResponse.Content ?? string.Empty);
         }
     }
 }

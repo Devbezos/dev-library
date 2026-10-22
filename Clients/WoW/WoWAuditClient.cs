@@ -4,10 +4,9 @@ using DevClient.Data.WoW.WoWAudit;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
+using RestSharp;
 using Serilog;
 using System.Globalization;
-using System.Net.Http.Headers;
-using System.Text;
 
 namespace DevClient.Clients
 {
@@ -19,9 +18,9 @@ namespace DevClient.Clients
             ContractResolver = new CamelCasePropertyNamesContractResolver()
         };
 
-        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly RestClient _http;
 
-        public WoWAuditClient(IHttpClientFactory httpClientFactory) => _httpClientFactory = httpClientFactory;
+        public WoWAuditClient(RestClient? http = null) => _http = http ?? SharedHttp.Client;
 
         public Task<List<WoWAuditCharacter>> GetCharacters(string guild) =>
             GetCharacters(guild, GetGuildToken(guild));
@@ -31,9 +30,8 @@ namespace DevClient.Clients
             Log.Information("WoWAuditClient.GetCharacters: START {Guild}", guild);
             try
             {
-                using var client = CreateAuthorizedClient(token);
-                using var httpResponse = await client.GetAsync($"{Constants.WoW.WoWAudit.Url}/characters");
-                var response = await httpResponse.Content.ReadAsStringAsync();
+                var httpResponse = await _http.SendAsync(CreateAuthorizedRequest(token, Method.Get, $"{Constants.WoW.WoWAudit.Url}/characters"));
+                var response = httpResponse.Content ?? string.Empty;
                 httpResponse.EnsureSuccessStatusCode();
 
                 var guildies = JsonConvert.DeserializeObject<List<WoWAuditCharacter>>(response) ?? [];
@@ -55,9 +53,8 @@ namespace DevClient.Clients
         public async Task<IReadOnlyList<RaidScheduleEvent>> GetRaidSchedule(string guild, string token)
         {
             Log.Information("WoWAuditClient.GetRaidSchedule: START {Guild}", guild);
-            using var client = CreateAuthorizedClient(token);
-            using var httpResponse = await client.GetAsync($"{Constants.WoW.WoWAudit.Url}/raids");
-            var response = await httpResponse.Content.ReadAsStringAsync();
+            var httpResponse = await _http.SendAsync(CreateAuthorizedRequest(token, Method.Get, $"{Constants.WoW.WoWAudit.Url}/raids"));
+            var response = httpResponse.Content ?? string.Empty;
             httpResponse.EnsureSuccessStatusCode();
 
             var raids = ParseRaidSchedule(response);
@@ -72,10 +69,10 @@ namespace DevClient.Clients
             Log.Information("WoWAuditClient.UpdateWishlist: START");
             try
             {
-                using var client = CreateAuthorizedClient(GetGuildToken(guild));
-                var requestBody = CreateJsonContent(new WoWAuditWishlistRequest(reportId));
-                using var httpResponse = await client.PostAsync($"{Constants.WoW.WoWAudit.Url}/wishlists", requestBody);
-                response = await httpResponse.Content.ReadAsStringAsync();
+                var request = CreateAuthorizedRequest(GetGuildToken(guild), Method.Post, $"{Constants.WoW.WoWAudit.Url}/wishlists",
+                    new WoWAuditWishlistRequest(reportId));
+                var httpResponse = await _http.SendAsync(request);
+                response = httpResponse.Content ?? string.Empty;
                 httpResponse.EnsureSuccessStatusCode();
                 return JsonConvert.DeserializeObject<WoWAuditWishlistResponse>(response)!;
             }
@@ -96,11 +93,9 @@ namespace DevClient.Clients
         public async Task<WoWAuditCharacter> TrackCharacter(string guild, string token, WoWAuditTrackCharacterRequest request)
         {
             Log.Information("WoWAuditClient.TrackCharacter: START {Guild} {Character}", guild, request.Character.Name);
-            using var client = CreateAuthorizedClient(token);
-            using var response = await client.PostAsync(
-                $"{Constants.WoW.WoWAudit.Url}/characters",
-                CreateJsonContent(request));
-            var responseBody = await response.Content.ReadAsStringAsync();
+            var response = await _http.SendAsync(
+                CreateAuthorizedRequest(token, Method.Post, $"{Constants.WoW.WoWAudit.Url}/characters", request));
+            var responseBody = response.Content ?? string.Empty;
 
             if (!response.IsSuccessStatusCode)
                 throw new HttpRequestException(
@@ -114,12 +109,8 @@ namespace DevClient.Clients
         public async Task UpdateCharacter(string guild, int characterId, WoWAuditUpdateCharacterRequest request)
         {
             Log.Information("WoWAuditClient.UpdateCharacter: START {Guild} {CharacterId}", guild, characterId);
-            using var client = CreateAuthorizedClient(GetGuildToken(guild));
-            using var message = new HttpRequestMessage(HttpMethod.Put, $"{Constants.WoW.WoWAudit.Url}/characters/{characterId}")
-            {
-                Content = CreateJsonContent(request)
-            };
-            using var response = await client.SendAsync(message);
+            var response = await _http.SendAsync(
+                CreateAuthorizedRequest(GetGuildToken(guild), Method.Put, $"{Constants.WoW.WoWAudit.Url}/characters/{characterId}", request));
             response.EnsureSuccessStatusCode();
         }
 
@@ -129,12 +120,12 @@ namespace DevClient.Clients
         public async Task UntrackCharacter(string guild, string token, int characterId)
         {
             Log.Information("WoWAuditClient.UntrackCharacter: START {Guild} {CharacterId}", guild, characterId);
-            using var client = CreateAuthorizedClient(token);
-            using var response = await client.DeleteAsync($"{Constants.WoW.WoWAudit.Url}/characters/{characterId}");
+            var response = await _http.SendAsync(
+                CreateAuthorizedRequest(token, Method.Delete, $"{Constants.WoW.WoWAudit.Url}/characters/{characterId}"));
 
             if (!response.IsSuccessStatusCode)
             {
-                var responseBody = await response.Content.ReadAsStringAsync();
+                var responseBody = response.Content ?? string.Empty;
                 throw new HttpRequestException(
                     $"WoW Audit character untracking failed ({(int)response.StatusCode}): {responseBody}",
                     null,
@@ -305,21 +296,15 @@ namespace DevClient.Clients
                 .FirstOrDefault();
         }
 
-        private HttpClient CreateAuthorizedClient(string token)
-        {
-            var client = _httpClientFactory.CreateClient();
-            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            client.DefaultRequestHeaders.Authorization = CreateAuthorizationHeader(token);
-            return client;
-        }
-
-        private static AuthenticationHeaderValue CreateAuthorizationHeader(string token)
+        private static RestRequest CreateAuthorizedRequest(string token, Method method, string url, object? payload = null)
         {
             var trimmed = token.Trim();
-            if (trimmed.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-                return AuthenticationHeaderValue.Parse(trimmed);
-
-            return new AuthenticationHeaderValue("Bearer", trimmed);
+            var request = new RestRequest(url, method)
+                .AddHeader("Accept", "application/json")
+                .AddHeader("Authorization", trimmed.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? trimmed : $"Bearer {trimmed}");
+            if (payload != null)
+                request.AddStringBody(JsonConvert.SerializeObject(payload, SerializerSettings), ContentType.Json);
+            return request;
         }
 
         private static string GetGuildToken(string guild)
@@ -333,9 +318,6 @@ namespace DevClient.Clients
 
             return token;
         }
-
-        private static StringContent CreateJsonContent(object payload) =>
-            new(JsonConvert.SerializeObject(payload, SerializerSettings), Encoding.UTF8, "application/json");
     }
 }
 
