@@ -1,7 +1,7 @@
 namespace DevClient.Data;
 
-// Single-row settings + last-seen state for the RXPGuides watcher: the bot reads the first
-// post of ThreadUrl, follows its f2h.io link, hashes the archive and posts to ChannelId when
+// Single-row settings + last-seen state for the RXPGuides watcher: the home agent reads the first
+// post of ThreadUrl, follows its f2h.io link and hashes the archive; the bot posts to ChannelId when
 // the hash differs from Sha256. PinnedChannelId/PinnedMessageId track the bot's currently
 // pinned update post so it can be unpinned when the next one goes up.
 public sealed record RxpGuidesWatch(
@@ -30,4 +30,25 @@ public interface IRxpGuidesWatchRepository
     void ResetLastSeen();
     // Pass 0/0 to clear.
     void RecordPinned(ulong channelId, ulong messageId);
+}
+
+// The newest archive the home agent handed over (single row), kept in MySQL because the bot has no volume.
+public sealed record RxpGuidesArchive(
+    string FileName,
+    string Sha256,
+    long SizeBytes,
+    byte[] Content,
+    string? F2hUrl,
+    string? PostText,
+    string? LastEdited,
+    DateTime ReceivedAtUtc);
+
+public interface IRxpGuidesArchiveRepository
+{
+    /// <summary>The stored archive including its bytes, or null when the agent hasn't delivered one yet.</summary>
+    RxpGuidesArchive? Get();
+    /// <summary>The stored archive's SHA-256 without loading its bytes, or null when none is stored.</summary>
+    string? GetSha256();
+    /// <summary>Replaces the stored archive; only the newest is kept.</summary>
+    void Save(RxpGuidesArchive archive);
 }
