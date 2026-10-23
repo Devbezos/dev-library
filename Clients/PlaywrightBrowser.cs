@@ -13,12 +13,13 @@ namespace DevClient.Clients
             _browser = browser;
         }
 
-        public static async Task<PlaywrightBrowser> CreateAsync()
+        /// <param name="headless">False opens a visible window (needs a desktop session), for stores that block headless Chromium.</param>
+        public static async Task<PlaywrightBrowser> CreateAsync(bool headless = true)
         {
             var playwright = await Playwright.CreateAsync();
             var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
             {
-                Headless = true,
+                Headless = headless,
                 Proxy = ScrapingNetwork.CreatePlaywrightProxy(),
                 Args =
                 [
