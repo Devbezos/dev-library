@@ -58,6 +58,9 @@ namespace DevClient.Data.WoW.WarcraftLogs
     }
 
     /// <summary>Raised when the Warcraft Logs GraphQL API returns an errors array (e.g. unknown guild or report).</summary>
+    /// <summary>A player who appears in a report's boss pulls.</summary>
+    public record WarcraftLogsReportPlayer(string Name, string? Server, string? Class);
+
     public class WarcraftLogsApiException : Exception
     {
         public WarcraftLogsApiException(string message) : base(message) { }

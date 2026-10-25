@@ -241,6 +241,54 @@ namespace DevClient.Clients
                 ?? throw new WarcraftLogsApiException("This report does not exist.");
         }
 
+        public async Task<IReadOnlyList<WarcraftLogsReportPlayer>> GetReportPlayers(string code)
+        {
+            Log.Information("WarcraftLogsClient.GetReportPlayers: {Code}", code);
+
+            // playerDetails is a JSON scalar: { data: { playerDetails: { tanks: [], healers: [], dps: [] } } }.
+            const string query = """
+                query ($code: String!) {
+                  reportData {
+                    report(code: $code) {
+                      endTime
+                      playerDetails(killType: Encounters)
+                    }
+                  }
+                }
+                """;
+
+            var data = await PostQuery(query, new { code }, data => data["reportData"]?["report"] is { Type: JTokenType.Object } report
+                ? ReportTtl(report["endTime"]?.Value<long?>())
+                : MissingTtl);
+
+            if (data["reportData"]?["report"] is not { Type: JTokenType.Object } found)
+                throw new WarcraftLogsApiException("This report does not exist.");
+            return ParsePlayerDetails(found["playerDetails"]);
+        }
+
+        /// <summary>Flattens a report's playerDetails scalar (tanks, healers and dps) into one list of distinct players.</summary>
+        public static IReadOnlyList<WarcraftLogsReportPlayer> ParsePlayerDetails(JToken? playerDetails)
+        {
+            var details = playerDetails?.Type == JTokenType.String
+                ? JToken.Parse(playerDetails.Value<string>()!)
+                : playerDetails;
+            var roles = details?["data"]?["playerDetails"] ?? details?["playerDetails"] ?? details;
+            if (roles is not JObject roleObject)
+                return [];
+
+            return roleObject.Properties()
+                .Select(role => role.Value)
+                .OfType<JArray>()
+                .SelectMany(players => players.OfType<JObject>())
+                .Select(player => new WarcraftLogsReportPlayer(
+                    player["name"]?.Value<string>()?.Trim() ?? string.Empty,
+                    player["server"]?.Value<string>()?.Trim(),
+                    player["type"]?.Value<string>()?.Trim()))
+                .Where(player => player.Name.Length > 0)
+                .DistinctBy(player => $"{player.Name}|{player.Server}", StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
         /// <summary>
         /// Converts a display realm name to the Blizzard/WCL slug, e.g. "Zul'jin" -> "zuljin", "Area 52" -> "area-52".
         /// </summary>

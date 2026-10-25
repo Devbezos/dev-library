@@ -85,6 +85,10 @@ namespace DevClient.Data.WoW.WoWUtils
         public string? Rank { get; set; }
     }
 
+    /// <summary>One character's attendance at one raid event of a WoW Utils group.</summary>
+    /// <param name="Realm">Null when WoW Utils gave only a name.</param>
+    public record WoWUtilsAttendanceRecord(string EventId, string EventName, DateTime StartsAtUtc, string Name, string? Realm, bool Attended);
+
     public class WoWUtilsGroupListResponse
     {
         [JsonProperty("data")]

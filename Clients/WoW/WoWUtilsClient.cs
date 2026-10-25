@@ -34,6 +34,7 @@ namespace DevClient.Clients
         public static readonly TimeSpan ReportTtl = TimeSpan.FromDays(1);
         public static readonly TimeSpan ScheduleTtl = TimeSpan.FromMinutes(5);
         public static readonly TimeSpan RosterTtl = TimeSpan.FromMinutes(2);
+        public static readonly TimeSpan AttendanceTtl = TimeSpan.FromMinutes(10);
 
         private readonly RestClient _http;
         private readonly ApiResponseCache _cache;
@@ -103,6 +104,20 @@ namespace DevClient.Clients
             var raids = ParseRaidSchedule(responseJson);
             Log.Information("WoWUtilsClient.GetRaidSchedule: END {Count}", raids.Count);
             return raids;
+        }
+
+        public async Task<IReadOnlyList<WoWUtilsAttendanceRecord>> GetAttendance(string groupId, string apiKey)
+        {
+            if (string.IsNullOrWhiteSpace(groupId))
+                throw new InvalidOperationException("WoW Utils groupId is required for attendance");
+
+            Log.Information("WoWUtilsClient.GetAttendance: START {GroupId}", groupId);
+            var responseJson = await CachedGet("attendance", $"{Constants.WoW.WoWUtils.BaseUrl}/v1/groups/{groupId}/calendar-schedules", apiKey,
+                AttendanceTtl, "WoW Utils attendance fetch failed");
+
+            var records = ParseAttendance(responseJson);
+            Log.Information("WoWUtilsClient.GetAttendance: END {Count}", records.Count);
+            return records;
         }
 
         private async Task<WoWUtilsImportResponse> ImportDroptimizer(
@@ -331,6 +346,76 @@ namespace DevClient.Clients
                 .Select(raid => raid!)
                 .OrderBy(raid => raid.StartsAtUtc)
                 .ToList();
+        }
+
+        // ASSUMED shape (not verified against a real response): each calendar event (found like the raid schedule)
+        // has a date/startTime plus an array of per-character entries under one of AttendeeKeys. An entry names the
+        // character (name + realm, a "character" object, or a "characterId"/"playerId" slug) and a status such as
+        // present/attended/late (attended), absent/declined/no show (did not attend) or a boolean attended/present.
+        // Entries with any other status (tentative, bench, invited) are skipped, as are events with no attendee array.
+        private static readonly string[] AttendeeKeys = ["attendance", "attendees", "signups", "participants", "characters", "members", "roster"];
+        private static readonly string[] AttendedStatuses = ["present", "attended", "late", "tardy", "ontime", "on time", "yes"];
+        private static readonly string[] AbsentStatuses = ["absent", "no show", "noshow", "missed", "declined", "no"];
+
+        private static IReadOnlyList<WoWUtilsAttendanceRecord> ParseAttendance(string responseJson)
+        {
+            if (string.IsNullOrWhiteSpace(responseJson))
+                return [];
+
+            var array = FindRaidArray(JToken.Parse(responseJson));
+            if (array == null)
+                return [];
+
+            var records = new List<WoWUtilsAttendanceRecord>();
+            foreach (var item in array.OfType<JObject>())
+            {
+                var raid = ParseRaidEvent(item);
+                if (raid == null)
+                    continue;
+
+                var entries = AttendeeKeys.Select(key => item[key]).OfType<JArray>().FirstOrDefault();
+                if (entries == null)
+                    continue;
+
+                foreach (var entry in entries.OfType<JObject>())
+                {
+                    var attended = ParseAttended(entry);
+                    var (name, realm) = ParseAttendeeIdentity(entry);
+                    if (attended == null || string.IsNullOrWhiteSpace(name))
+                        continue;
+                    records.Add(new WoWUtilsAttendanceRecord(raid.ExternalId, raid.Name, raid.StartsAtUtc, name, realm, attended.Value));
+                }
+            }
+
+            return records;
+        }
+
+        private static bool? ParseAttended(JObject entry)
+        {
+            foreach (var key in new[] { "attended", "present" })
+                if (entry[key]?.Type == JTokenType.Boolean)
+                    return entry[key]!.Value<bool>();
+
+            var status = FirstString(entry, "status", "attendance", "state", "response")?.ToLowerInvariant();
+            if (status == null)
+                return null;
+            if (AttendedStatuses.Contains(status))
+                return true;
+            return AbsentStatuses.Contains(status) ? false : null;
+        }
+
+        private static (string? Name, string? Realm) ParseAttendeeIdentity(JObject entry)
+        {
+            var source = entry["character"] as JObject ?? entry;
+            var name = FirstString(source, "name", "characterName");
+            var realm = FirstString(source, "realm", "realmSlug");
+            if (!string.IsNullOrWhiteSpace(name))
+                return (name, realm);
+
+            // A "name-realm" slug such as "lynx-illidan": split at the first hyphen (names hold none).
+            var slug = FirstString(source, "characterId", "playerId", "id");
+            var dash = slug?.IndexOf('-') ?? -1;
+            return dash > 0 ? (slug![..dash], slug[(dash + 1)..]) : (slug, null);
         }
 
         private static JArray? FindRaidArray(JToken token)
