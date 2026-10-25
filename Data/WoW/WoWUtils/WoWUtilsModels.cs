@@ -83,11 +83,20 @@ namespace DevClient.Data.WoW.WoWUtils
 
         [JsonProperty("rank")]
         public string? Rank { get; set; }
+
+        /// <summary>The roster person's id (shared by their main and alts); matches an absence's member id.</summary>
+        [JsonProperty("memberId")]
+        public string? MemberId { get; set; }
+
+        /// <summary>The roster person's display name, when WoW Utils gives one.</summary>
+        [JsonProperty("personName")]
+        public string? PersonName { get; set; }
     }
 
-    /// <summary>One character's attendance at one raid event of a WoW Utils group.</summary>
-    /// <param name="Realm">Null when WoW Utils gave only a name.</param>
-    public record WoWUtilsAttendanceRecord(string EventId, string EventName, DateTime StartsAtUtc, string Name, string? Realm, bool Attended);
+    /// <summary>A declared absence of one person (raider); both dates are inclusive.</summary>
+    /// <param name="MemberId">The person's id; null when WoW Utils omitted it.</param>
+    /// <param name="DisplayName">The person's display name (not a character name).</param>
+    public record WoWUtilsAbsence(string? MemberId, string? DisplayName, DateOnly StartDate, DateOnly EndDate);
 
     public class WoWUtilsGroupListResponse
     {

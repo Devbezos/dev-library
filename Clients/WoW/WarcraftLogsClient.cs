@@ -266,6 +266,83 @@ namespace DevClient.Clients
             return ParsePlayerDetails(found["playerDetails"]);
         }
 
+        public async Task<IReadOnlyList<WarcraftLogsReportPlayerStats>> GetReportPlayerStats(string code)
+        {
+            Log.Information("WarcraftLogsClient.GetReportPlayerStats: {Code}", code);
+
+            // rankings and table are JSON scalars. UNVERIFIED shapes, parsed tolerantly (see ParsePlayerStats):
+            // rankings { data: [ { roles: { tanks|healers|dps: { characters: [ { name, server, rankPercent } ] } } } ] }
+            // and the deaths table { data: { entries: [ { name } ] } } (one entry per death).
+            // Tanks and dps are ranked by damage, healers by healing, hence the two rankings.
+            const string query = """
+                query ($code: String!) {
+                  reportData {
+                    report(code: $code) {
+                      endTime
+                      dpsRankings: rankings(playerMetric: dps, compare: Parses)
+                      hpsRankings: rankings(playerMetric: hps, compare: Parses)
+                      deaths: table(dataType: Deaths, killType: Encounters)
+                    }
+                  }
+                }
+                """;
+
+            var data = await PostQuery(query, new { code }, data => data["reportData"]?["report"] is { Type: JTokenType.Object } report
+                ? ReportTtl(report["endTime"]?.Value<long?>())
+                : MissingTtl);
+
+            if (data["reportData"]?["report"] is not { Type: JTokenType.Object } found)
+                throw new WarcraftLogsApiException("This report does not exist.");
+            return ParsePlayerStats(found["dpsRankings"], found["hpsRankings"], found["deaths"]);
+        }
+
+        private static JToken? Unwrap(JToken? scalar) =>
+            scalar?.Type == JTokenType.String ? JToken.Parse(scalar.Value<string>()!) : scalar;
+
+        /// <summary>
+        /// Per-player parse totals and death counts of one report. Parses are the tanks' and dps' damage rankings plus the
+        /// healers' healing rankings (rankPercent, else bracketPercent); deaths count the deaths table's entries per name.
+        /// Deaths are null for everyone when the deaths table is missing; players only in the deaths table get no parses.
+        /// </summary>
+        public static IReadOnlyList<WarcraftLogsReportPlayerStats> ParsePlayerStats(JToken? dpsRankings, JToken? hpsRankings, JToken? deathsTable)
+        {
+            var parses = new Dictionary<string, (string Name, string? Server, double Total, int Count)>(StringComparer.OrdinalIgnoreCase);
+            void AddParses(JToken? rankings, params string[] roles)
+            {
+                var fights = Unwrap(rankings) is { } root ? root["data"] as JArray ?? root as JArray : null;
+                foreach (var role in roles)
+                    foreach (var character in (fights?.OfType<JObject>() ?? Enumerable.Empty<JObject>())
+                        .SelectMany(f => (f["roles"]?[role]?["characters"] as JArray)?.OfType<JObject>() ?? Enumerable.Empty<JObject>()))
+                    {
+                        var name = character["name"]?.Value<string>()?.Trim();
+                        var percent = (character["rankPercent"] ?? character["bracketPercent"])?.Value<double?>();
+                        if (string.IsNullOrEmpty(name) || percent == null)
+                            continue;
+                        var server = character["server"] is JObject s ? s["name"]?.Value<string>() ?? s["slug"]?.Value<string>() : character["server"]?.Value<string>();
+                        var key = $"{name}|{server}";
+                        parses[key] = parses.TryGetValue(key, out var p) ? (p.Name, p.Server, p.Total + percent.Value, p.Count + 1) : (name, server, percent.Value, 1);
+                    }
+            }
+            AddParses(dpsRankings, "tanks", "dps");
+            AddParses(hpsRankings, "healers");
+
+            var deathsRoot = Unwrap(deathsTable);
+            var entries = (deathsRoot?["data"]?["entries"] ?? deathsRoot?["entries"]) as JArray;
+            var deaths = entries?.OfType<JObject>()
+                .Select(e => e["name"]?.Value<string>()?.Trim())
+                .Where(n => !string.IsNullOrEmpty(n))
+                .GroupBy(n => n!, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+
+            var stats = parses.Values
+                .Select(p => new WarcraftLogsReportPlayerStats(p.Name, p.Server, p.Total, p.Count, deaths == null ? null : deaths.GetValueOrDefault(p.Name, 0)))
+                .ToList();
+            if (deaths != null)
+                stats.AddRange(deaths.Where(d => !stats.Any(s => string.Equals(s.Name, d.Key, StringComparison.OrdinalIgnoreCase)))
+                    .Select(d => new WarcraftLogsReportPlayerStats(d.Key, null, 0, 0, d.Value)));
+            return stats;
+        }
+
         /// <summary>Flattens a report's playerDetails scalar (tanks, healers and dps) into one list of distinct players.</summary>
         public static IReadOnlyList<WarcraftLogsReportPlayer> ParsePlayerDetails(JToken? playerDetails)
         {

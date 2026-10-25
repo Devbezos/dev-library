@@ -61,6 +61,9 @@ namespace DevClient.Data.WoW.WarcraftLogs
     /// <summary>A player who appears in a report's boss pulls.</summary>
     public record WarcraftLogsReportPlayer(string Name, string? Server, string? Class);
 
+    /// <summary>One player's parses and deaths in one report: the sum and count of their per-encounter parse percents, and their deaths (null when unavailable).</summary>
+    public record WarcraftLogsReportPlayerStats(string Name, string? Server, double ParseTotal, int ParseCount, int? Deaths);
+
     public class WarcraftLogsApiException : Exception
     {
         public WarcraftLogsApiException(string message) : base(message) { }

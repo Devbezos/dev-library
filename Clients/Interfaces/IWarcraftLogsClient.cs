@@ -9,6 +9,8 @@ namespace DevClient.Clients
         Task<WarcraftLogsReport> GetReportFights(string code);
         /// <summary>The players who took part in a report's boss pulls (one cached query per report).</summary>
         Task<IReadOnlyList<WarcraftLogsReportPlayer>> GetReportPlayers(string code);
+        /// <summary>Per-player parse totals and deaths of a report's boss pulls (one cached query per report; shapes unverified).</summary>
+        Task<IReadOnlyList<WarcraftLogsReportPlayerStats>> GetReportPlayerStats(string code);
         /// <summary>Runs any GraphQL query and returns its <c>data</c> object; GraphQL errors throw <see cref="WarcraftLogsApiException"/>.</summary>
         Task<Newtonsoft.Json.Linq.JToken> QueryAsync(string query, object? variables = null);
     }
