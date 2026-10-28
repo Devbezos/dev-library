@@ -20,9 +20,10 @@ namespace DevClient.Data
         public static GoogleHealthUserSettings[] GoogleHealth { get; set; } = Array.Empty<GoogleHealthUserSettings>();
         public static FitnessWeightSheetSettings FitnessWeightSheet { get; set; } = new();
         public static string RxpGuidesWatchThreadUrl { get; set; } = string.Empty;
-        /// <summary>Hevy API key (<c>hevy:apiKey</c>, usually in the API's appsettings); empty turns Hevy sync off.</summary>
+        /// <summary>The old single-account Hevy API key (<c>hevy:apiKey</c>), now only the fallback for the account that setup was moved to; everyone else uses their own key from Settings.</summary>
         public static string HevyApiKey { get; set; } = string.Empty;
-        public static ulong HevyWorkoutChannelId { get; set; }
+        /// <summary>Secret (<c>hevy:keySecret</c>, the same in the API and the bot) the Hevy keys the bot reads are encrypted with.</summary>
+        public static string HevyKeySecret { get; set; } = string.Empty;
         /// <summary>Discord webhook for Error/Fatal log alerts (<c>alerts:discordWebhookUrl</c>); empty turns alerts off.</summary>
         public static string AlertsDiscordWebhookUrl { get; set; } = string.Empty;
         /// <summary>Config <c>logFiles</c> (true/false); unset means log files locally and none in a container.</summary>
@@ -61,7 +62,7 @@ namespace DevClient.Data
             FitnessWeightSheet = config.GetSection("fitnessWeightSheet").Get<FitnessWeightSheetSettings>() ?? new FitnessWeightSheetSettings();
             RxpGuidesWatchThreadUrl = config.GetValue<string>("rxpGuidesWatch:threadUrl") ?? string.Empty;
             HevyApiKey = config.GetValue<string>("hevy:apiKey") ?? string.Empty;
-            HevyWorkoutChannelId = config.GetValue<ulong>("hevy:workoutChannelId");
+            HevyKeySecret = config.GetValue<string>("hevy:keySecret") ?? string.Empty;
             AlertsDiscordWebhookUrl = config.GetValue<string>("alerts:discordWebhookUrl") ?? string.Empty;
             LogFiles = config.GetValue<string>("logFiles");
         }
